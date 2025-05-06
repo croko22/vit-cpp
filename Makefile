@@ -2,13 +2,13 @@
 TARGET = attention
 
 # Archivos fuente
-SRC = attention.cu matmul.cu softmax.cu
+SRC = main.cu attention.cu matmul.cu softmax.cu
 
 # Compilador CUDA
 NVCC = nvcc
 
 # Flags de compilación
-NVCC_FLAGS = -arch=sm_60 -std=c++17
+NVCC_FLAGS = -arch=sm_75 -std=c++17
 
 # Regla principal
 all: $(TARGET)

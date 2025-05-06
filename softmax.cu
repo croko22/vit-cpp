@@ -1,20 +1,8 @@
 
 #include <cmath>
+#include <cfloat>
 #include <cuda_runtime.h>
-#include "matmul_softmax.cuh"
-
-__global__ void matmul(float *A, float *B, float *C, int N)
-{
-    int row = threadIdx.y + blockIdx.y * blockDim.y;
-    int col = threadIdx.x + blockIdx.x * blockDim.x;
-    float sum = 0;
-    if (row < N && col < N)
-    {
-        for (int k = 0; k < N; ++k)
-            sum += A[row * N + k] * B[k * N + col];
-        C[row * N + col] = sum;
-    }
-}
+#include "matrix_utils.cuh"
 
 __global__ void row_softmax(float *mat, int N)
 {
@@ -22,18 +10,43 @@ __global__ void row_softmax(float *mat, int N)
     if (row >= N)
         return;
 
-    float max_val = mat[row * N];
-    for (int i = 1; i < N; ++i)
-        if (mat[row * N + i] > max_val)
-            max_val = mat[row * N + i];
+    extern __shared__ float shared_data[];
+    float *row_data = &mat[row * N];
 
-    float sum = 0.0;
-    for (int i = 0; i < N; ++i)
+    // Encontrar el máximo (reducción paralela)
+    float max_val = -FLT_MAX;
+    for (int i = threadIdx.x; i < N; i += blockDim.x)
+        max_val = fmaxf(max_val, row_data[i]);
+    shared_data[threadIdx.x] = max_val;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset /= 2)
     {
-        mat[row * N + i] = expf(mat[row * N + i] - max_val);
-        sum += mat[row * N + i];
+        if (threadIdx.x < offset)
+            shared_data[threadIdx.x] = fmaxf(shared_data[threadIdx.x], shared_data[threadIdx.x + offset]);
+        __syncthreads();
     }
+    max_val = shared_data[0];
 
-    for (int i = 0; i < N; ++i)
-        mat[row * N + i] /= sum;
+    // Calcular exponenciales y suma (reducción paralela)
+    float sum = 0.0;
+    for (int i = threadIdx.x; i < N; i += blockDim.x)
+    {
+        row_data[i] = expf(row_data[i] - max_val);
+        sum += row_data[i];
+    }
+    shared_data[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset /= 2)
+    {
+        if (threadIdx.x < offset)
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + offset];
+        __syncthreads();
+    }
+    sum = shared_data[0];
+
+    // Paso 3: Normalizar
+    for (int i = threadIdx.x; i < N; i += blockDim.x)
+        row_data[i] /= sum;
 }

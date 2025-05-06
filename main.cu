@@ -1,8 +1,8 @@
-
 #include <iostream>
 #include "attention.cuh"
 
-int main() {
+int main()
+{
     const int N = 4;
     float h_Q[N * N] = {1, 2, 3, 4,
                         4, 3, 2, 1,
@@ -21,9 +21,11 @@ int main() {
     run_attention(h_Q, h_K, h_V, h_output, N);
 
     std::cout << "Attention Output:\n";
-    for (int i = 0; i < N * N; ++i) {
+    for (int i = 0; i < N * N; ++i)
+    {
         std::cout << h_output[i] << " ";
-        if ((i + 1) % N == 0) std::cout << "\n";
+        if ((i + 1) % N == 0)
+            std::cout << "\n";
     }
 
     return 0;
