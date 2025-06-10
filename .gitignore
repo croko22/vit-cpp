@@ -37,3 +37,6 @@
 *.ptx
 *.cubin
 *.fatbin
+
+/data
+/build
