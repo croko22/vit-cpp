@@ -34,7 +34,7 @@ int main()
 
     int src_seq_len = 10;
     int tgt_seq_len = 15;
-    int batch_size = 1;
+    // int batch_size = 1;
 
     std::cout << "[INFO] Creando tensores de entrada falsos (dummy data)..." << std::endl;
 

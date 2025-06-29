@@ -50,7 +50,7 @@ int main()
 
     // Aplicar Multi-Head Attention
     std::cout << "\nApplying Multi-Head Attention..." << std::endl;
-    Tensor output = mha.forward(input);
+    Tensor output = mha.forward(input, input, input);
 
     // Mostrar resultados
     std::cout << "\nOutput tensor shape: [" << output.get_shape()[0]

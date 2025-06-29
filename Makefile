@@ -1,58 +1,78 @@
-# === Variables de proyecto ===
-TARGET         := attention
-EXAMPLE        := example_feedforward
-BUILD_DIR      := build
-SRC_DIR        := src
-EXAMPLES_DIR   := examples
+# --- Variables de Configuración ---
 
-# === Archivos fuente ===
-CUDA_SRC       := $(wildcard $(SRC_DIR)/*.cu)
-CPP_SRC        := $(wildcard $(SRC_DIR)/**/*.cpp) $(wildcard $(SRC_DIR)/*.cpp)
-EXAMPLE_SRC    := $(EXAMPLES_DIR)/example_feedforward.cpp
+# Compilador a usar
+CXX = g++
 
-# === Compiladores y flags ===
-NVCC           := nvcc
-CXX            := g++
-NVCC_FLAGS     := -arch=sm_75 -std=c++17
-CXX_FLAGS      := -std=c++17 -O2
+# Flags del compilador: C++17, todas las advertencias, y le decimos dónde buscar los headers.
+CXXFLAGS = -std=c++17 -Wall -Iinclude
 
-# === Targets ===
-.PHONY: all clean run_example run_attention tree
+# Directorios
+SRC_DIR = src
+EXAMPLE_DIR = examples
+BUILD_DIR = build
 
-all: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(EXAMPLE)
+# --- Archivos Fuente y Objeto ---
 
-# Ejecutables
-$(BUILD_DIR)/$(TARGET): $(CUDA_SRC) | $(BUILD_DIR)
-	$(NVCC) $(NVCC_FLAGS) $^ -o $@
+# Creamos una lista de todos los archivos .cpp de nuestro modelo
+# La función wildcard busca todos los archivos que coincidan con el patrón.
+MODEL_SOURCES = $(wildcard $(SRC_DIR)/model/*.cpp) $(wildcard $(SRC_DIR)/core/*.cpp)
 
-$(BUILD_DIR)/$(EXAMPLE): $(EXAMPLE_SRC) $(SRC_DIR)/model/feedforward.cpp | $(BUILD_DIR)
-	$(CXX) $(CXX_FLAGS) $^ -o $@
+# Convertimos la lista de fuentes a una lista de archivos objeto (.o) que se guardarán en build/
+# Ejemplo: src/core/tensor.cpp -> build/core/tensor.o
+MODEL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(MODEL_SOURCES))
 
-# Crear carpeta build si no existe
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# Definimos los objetos que necesita cada ejecutable. Así evitamos repetirnos.
+CORE_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/core/ops.o
+LN_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o
+MHA_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/multi_head_attention.o
+FF_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/feedforward.o
+ENC_OBJS = $(MHA_OBJS) $(LN_OBJS) $(FF_OBJS) $(BUILD_DIR)/model/encoder.o
+DEC_OBJS = $(ENC_OBJS) $(BUILD_DIR)/model/decoder.o
+TRANSF_OBJS = $(DEC_OBJS) $(BUILD_DIR)/model/transformer.o
 
-# Limpiar todo lo generado
+
+# --- Reglas de Compilación ---
+
+# La regla por defecto: si solo escribes "make", se ejecutará esto.
+# Construye todos los ejemplos.
+all: layernorm multihead feedforward encoder decoder transformer
+
+# Regla genérica para compilar cualquier archivo .cpp en un .o
+# Make es lo suficientemente inteligente para usar esta regla para todos los MODEL_OBJECTS.
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
+	@mkdir -p $(dir $@) # Crea el directorio de build si no existe (ej. build/core/)
+	@echo "Compilando $< -> $@"
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Reglas para construir cada ejecutable final
+layernorm: $(LN_OBJS)
+	@echo "Linkeando para crear el ejecutable de LayerNorm..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_layernorm.cpp $^ -o $(BUILD_DIR)/layernorm.out
+
+multihead: $(MHA_OBJS)
+	@echo "Linkeando para crear el ejecutable de Multihead Attention..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_multihead_attention.cpp $^ -o $(BUILD_DIR)/multihead.out
+
+feedforward: $(FF_OBJS)
+	@echo "Linkeando para crear el ejecutable de FeedForward..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_feedforward.cpp $^ -o $(BUILD_DIR)/feedforward.out
+
+encoder: $(ENC_OBJS)
+	@echo "Linkeando para crear el ejecutable del Encoder..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_encoder.cpp $^ -o $(BUILD_DIR)/encoder.out
+
+decoder: $(DEC_OBJS)
+	@echo "Linkeando para crear el ejecutable del Decoder..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_decoder.cpp $^ -o $(BUILD_DIR)/decoder.out
+
+transformer: $(TRANSF_OBJS)
+	@echo "Linkeando para crear el ejecutable del Transformer..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_transformer.cpp $^ -o $(BUILD_DIR)/transformer.out
+
+# Regla para limpiar todo lo compilado
 clean:
-	rm -rf $(BUILD_DIR)
+	@echo "Limpiando archivos de compilación..."
+	@rm -rf $(BUILD_DIR)
 
-# Ejecutar ejemplo de feedforward
-run_example: $(BUILD_DIR)/$(EXAMPLE)
-	./$(BUILD_DIR)/$(EXAMPLE)
-
-# Ejecutar attention
-run_attention: $(BUILD_DIR)/$(TARGET)
-	./$(BUILD_DIR)/$(TARGET)
-
-# Ver estructura de archivos (requiere 'tree')
-tree:
-	tree -I '$(BUILD_DIR)'
-
-# Ayuda
-help:
-	@echo "Comandos útiles:"
-	@echo "  make                # Compila todo"
-	@echo "  make clean          # Limpia la carpeta build"
-	@echo "  make run_example    # Ejecuta el ejemplo feedforward"
-	@echo "  make run_attention  # Ejecuta el binario attention"
-	@echo "  make tree           # Muestra el árbol de archivos"
+# Le decimos a make que "all" y "clean" no son archivos, sino nombres de comandos.
+.PHONY: all clean layernorm multihead feedforward encoder decoder transformer
