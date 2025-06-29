@@ -50,24 +50,34 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads)
               << ", num_heads=" << num_heads << ", d_k=" << d_k << std::endl;
 }
 
-Tensor MultiHeadAttention::forward(const Tensor &input)
+Tensor MultiHeadAttention::forward(const Tensor &query, const Tensor &key, const Tensor &value, const Tensor *mask)
 {
-    // En self-attention, Q, K y V provienen del mismo input.
     // 1. Proyección lineal a Q, K, V
-    Tensor q = matmul(input, w_q_);
-    Tensor k = matmul(input, w_k_);
-    Tensor v = matmul(input, w_v_);
+    Tensor q_proj = matmul(query, w_q_);
+    Tensor k_proj = matmul(key, w_k_);
+    Tensor v_proj = matmul(value, w_v_);
 
-    // NOTA: Aquí iría la lógica para dividir q, k, v en `num_heads`
-    // y luego concatenar. Para mantenerlo simple, procedemos sin cabezales.
+    // NOTA: La lógica de dividir en cabezales iría aquí.
 
-    // 2. Scaled Dot-Product Attention: softmax((Q @ K.T) * scale) @ V
-    Tensor scores = matmul(q, k.transpose());
+    // 2. Scaled Dot-Product Attention
+    Tensor scores = matmul(q_proj, k_proj.transpose());
     Tensor scaled_scores = scores * scale_;
-    Tensor attention_weights = softmax(scaled_scores);
-    Tensor context = matmul(attention_weights, v);
 
-    // 3. Proyección lineal de salida
+    // 3. Aplicar máscara (si existe)
+    // La máscara se suma. Donde la máscara es un número muy negativo,
+    // el resultado del softmax será cero.
+    if (mask)
+    {
+        // Asumimos que el operador `+` de Tensor soporta broadcasting o tiene la misma forma.
+        scaled_scores = scaled_scores + *mask;
+    }
+
+    Tensor attention_weights = softmax(scaled_scores);
+    Tensor context = matmul(attention_weights, v_proj);
+
+    // NOTA: La lógica de concatenar cabezales iría aquí.
+
+    // 4. Proyección lineal de salida
     Tensor output = matmul(context, w_o_);
 
     return output;

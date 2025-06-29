@@ -24,7 +24,7 @@ private:
 
 public:
     MultiHeadAttention(int d_model, int num_heads);
-    Tensor forward(const Tensor &input);
+    Tensor forward(const Tensor &query, const Tensor &key, const Tensor &value, const Tensor *mask = nullptr);
 };
 
 #endif // MULTI_HEAD_ATTENTION_HPP

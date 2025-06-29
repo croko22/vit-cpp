@@ -11,7 +11,7 @@ EncoderLayer::EncoderLayer(int d_model, int num_heads, int d_ff)
 Tensor EncoderLayer::forward(const Tensor &input)
 {
     // 1. Bloque de Multi-Head Attention
-    Tensor attn_output = attention_.forward(input);
+    Tensor attn_output = attention_.forward(input, input, input, nullptr);
 
     // 2. Conexión Residual (Add) y Layer Normalization (Norm)
     Tensor sublayer1_output = norm1_.forward(input + attn_output);
