@@ -1,14 +1,21 @@
-#pragma once
-#include <vector>
+#ifndef LAYERNORM_HPP
+#define LAYERNORM_HPP
 
-class LayerNorm
+#include "../core/tensor.hpp"
+
+class LayerNormalization
 {
-public:
-    LayerNorm(int dim);
-    std::vector<std::vector<float>> forward(
-        const std::vector<std::vector<float>> &x,
-        const std::vector<std::vector<float>> &residual);
-
 private:
-    int dim;
+    int feature_size_;
+    float epsilon_;
+
+    // Parámetros aprendibles
+    Tensor gamma_; // scale
+    Tensor beta_;  // shift
+
+public:
+    LayerNormalization(int feature_size, float epsilon = 1e-5);
+    Tensor forward(const Tensor &input);
 };
+
+#endif // LAYERNORM_HPP

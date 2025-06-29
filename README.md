@@ -42,3 +42,11 @@ CPU
 ´´´
 make run
 ´´´
+
+## Examples
+
+Layernorm: g++ examples/example_layernorm.cpp src/model/layernorm.cpp src/core/tensor.cpp
+Multihead Attention: g++ examples/example_multihead_attention.cpp src/model/multi_head_attention.cpp src/core/tensor.cpp src/core/ops.cpp
+FeedForward: g++ examples/example_feedforward.cpp src/model/feedforward.cpp src/core/tensor.cpp src/core/ops.cpp && ./a.out
+Encoder: g++ examples/example_encoder.cpp src/model/encoder.cpp src/model/multi_head_attention.cpp src/model/layernorm.c
+pp src/model/feedforward.cpp src/core/tensor.cpp src/core/ops.cpp && ./a.out
