@@ -76,6 +76,33 @@ Tensor softmax(const Tensor &input)
     return result;
 }
 
+Tensor softmax_backward(const Tensor &grad_output, const Tensor &softmax_output)
+{
+    auto shape = softmax_output.get_shape();
+    if (shape.size() != 2 || shape != grad_output.get_shape())
+    {
+        throw std::invalid_argument("Softmax backward requires matching shapes.");
+    }
+
+    int rows = shape[0];
+    int cols = shape[1];
+
+    Tensor result(shape);
+    float *data_grad = grad_output.get_data();
+    float *data_softmax = softmax_output.get_data();
+    float *data_result = result.get_data();
+
+    for (int i = 0; i < rows; ++i)
+    {
+        for (int j = 0; j < cols; ++j)
+        {
+            data_result[i * cols + j] = data_grad[i * cols + j] * data_softmax[i * cols + j] *
+                                        (1.0f - data_softmax[i * cols + j]);
+        }
+    }
+    return result;
+}
+
 Tensor relu(const Tensor &input)
 {
     Tensor result(input.get_shape());
@@ -88,4 +115,57 @@ Tensor relu(const Tensor &input)
         data_out[i] = std::max(0.0f, data_in[i]);
     }
     return result;
+}
+
+std::pair<Tensor, Tensor> matmul_backward(const Tensor &grad_output, const Tensor &a, const Tensor &b)
+{
+    // grad_a = grad_output @ b.T
+    Tensor grad_a = matmul(grad_output, b.transpose());
+    // grad_b = a.T @ grad_output
+    Tensor grad_b = matmul(a.transpose(), grad_output);
+    return {grad_a, grad_b};
+}
+
+Tensor relu_backward(const Tensor &grad_output, const Tensor &input)
+{
+    Tensor grad_input(input.get_shape());
+    float *grad_out_data = grad_output.get_data();
+    float *input_data = input.get_data();
+    float *grad_in_data = grad_input.get_data();
+
+    for (size_t i = 0; i < input.get_size(); ++i)
+    {
+        // El gradiente solo fluye si la entrada original era > 0
+        grad_in_data[i] = (input_data[i] > 0) ? grad_out_data[i] : 0.0f;
+    }
+    return grad_input;
+}
+
+Tensor sum(const Tensor &input, int axis, bool keep_dims)
+{
+    const auto &in_shape = input.get_shape();
+    if (in_shape.size() != 2 || axis != 0)
+    {
+        throw std::runtime_error("La función de suma actual solo soporta axis=0 para tensores 2D.");
+    }
+
+    // Aseguramos que la forma de salida sea [1, N], que es 2D.
+    std::vector<int> out_shape = {1, in_shape[1]};
+    Tensor output(out_shape);
+    output.zero_data();
+
+    const float *in_data = input.get_data();
+    float *out_data = output.get_data();
+    int rows = in_shape[0];
+    int cols = in_shape[1];
+    for (int j = 0; j < cols; ++j)
+    {
+        float col_sum = 0.0f;
+        for (int i = 0; i < rows; ++i)
+        {
+            col_sum += in_data[i * cols + j];
+        }
+        out_data[j] = col_sum;
+    }
+    return output;
 }

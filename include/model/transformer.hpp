@@ -2,7 +2,6 @@
 #define TRANSFORMER_HPP
 
 #include "encoder.hpp"
-#include "decoder.hpp"
 #include "../core/tensor.hpp"
 #include <vector>
 
@@ -11,10 +10,9 @@ class Transformer
 private:
     int num_layers_;
     int d_model_;
-
     std::vector<EncoderLayer> encoder_layers_;
-    std::vector<DecoderLayer> decoder_layers_;
     Tensor final_linear_layer_weights_;
+    Tensor decoder_output;
 
 public:
     // El constructor ya no necesita vocab_size ni max_seq_len
@@ -27,6 +25,9 @@ public:
      * @return Tensor de logits (sin softmax) con forma [tgt_len, target_vocab_size].
      */
     Tensor forward(const Tensor &src_tensor, const Tensor &tgt_tensor);
+    void backward(const Tensor &grad_output);
+    void step(float learning_rate);
+    void get_parameters(std::vector<Tensor *> &params);
 
 private:
     Tensor encode(const Tensor &src_tensor);

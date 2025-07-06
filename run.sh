@@ -8,7 +8,7 @@ usage() {
     echo "Comandos:"
     echo "  build         Compila todos los ejemplos."
     echo "  run [ejemplo] Compila y ejecuta un ejemplo específico."
-    echo "                Ejemplos: layernorm, multihead, feedforward, encoder, decoder, transformer"
+    echo "                Ejemplos: layernorm, multihead, feedforward, encoder, transformer"
     echo "  test          Compila y ejecuta todos los ejemplos en secuencia."
     echo "  clean         Limpia todos los archivos compilados."
     echo "  help          Muestra este mensaje de ayuda."
@@ -36,7 +36,7 @@ main() {
             echo -e "${GREEN}--- Ejecutando todas las pruebas ---${NC}"
             make all
             if [ $? -eq 0 ]; then
-                for example in layernorm multihead feedforward encoder decoder transformer; do
+                for example in layernorm multihead feedforward encoder transformer; do
                     echo -e "\n${YELLOW}--- Probando: $example ---${NC}"
                     ./build/"$example".out
                 done

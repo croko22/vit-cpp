@@ -1,108 +1,72 @@
 #include "../include/model/feedforward.hpp"
-#include "../include/core/tensor.hpp"
 #include <iostream>
-#include <iomanip>
 #include <vector>
-#include <cmath>
-#include <random>
-#include <algorithm>
+#include <cassert> // Para las verificaciones (asserts)
+
+// Función auxiliar para verificar las formas de los tensores
+void check_shape(const Tensor &t, const std::vector<int> &expected, const std::string &name)
+{
+    const auto &actual = t.get_shape();
+    assert(actual == expected);
+    std::cout << "✓ Shape de " << name << " es correcta: [";
+    for (size_t i = 0; i < actual.size(); ++i)
+    {
+        std::cout << actual[i] << (i == actual.size() - 1 ? "" : ", ");
+    }
+    std::cout << "]" << std::endl;
+}
 
 int main()
 {
-    std::cout << "=== FeedForward Network Example ===" << std::endl;
+    std::cout << "=== FeedForward Network Full Test (Forward & Backward) ===" << std::endl;
 
-    // Parámetros típicos de Transformer
-    int d_model = 512; // Dimensión del modelo
-    int d_ff = 2048;   // Dimensión interna FFN (típicamente 4x d_model)
-    int seq_len = 4;   // Longitud de secuencia
+    // --- 1. Configuración ---
+    int d_model = 64;
+    int d_ff = 128;
+    int seq_len = 17; // Como en tus logs de error
 
-    std::cout << "d_model: " << d_model << ", d_ff: " << d_ff
-              << " (expansion factor: " << (float)d_ff / d_model << "x)" << std::endl;
-
-    // Crear la red FeedForward
     FeedForwardNetwork ffn(d_model, d_ff);
 
-    // Crear tensor de entrada (seq_len x d_model)
-    std::vector<int> input_shape = {seq_len, d_model};
-    Tensor input(input_shape);
+    // Inicializar los gradientes para la prueba
+    ffn.w1_.init_grad();
+    ffn.b1_.init_grad();
+    ffn.w2_.init_grad();
+    ffn.b2_.init_grad();
 
-    // Llenar con datos de ejemplo (simulando salida de attention)
-    std::vector<float> input_data(seq_len * d_model);
-    for (int i = 0; i < seq_len; ++i)
-    {
-        for (int j = 0; j < d_model; ++j)
-        {
-            // Patrón que simula activaciones reales
-            input_data[i * d_model + j] = 0.5f * std::sin(0.1f * j) + 0.1f * (i + 1);
-        }
-    }
-    input.from_vector(input_data);
-
-    std::cout << "\nInput tensor shape: [" << seq_len << ", " << d_model << "]" << std::endl;
-    std::cout << "Input sample (first 10 values of each sequence):" << std::endl;
-
-    std::vector<float> input_vec = input.to_vector();
-    for (int i = 0; i < seq_len; ++i)
-    {
-        std::cout << "Seq " << i << ": ";
-        for (int j = 0; j < 10; ++j)
-        {
-            std::cout << std::fixed << std::setprecision(3) << input_vec[i * d_model + j] << " ";
-        }
-        std::cout << "..." << std::endl;
-    }
-
-    // Aplicar FeedForward Network
-    std::cout << "\nApplying FeedForward Network..." << std::endl;
-    std::cout << "Process: input[" << seq_len << "," << d_model << "] → W1 → ReLU → W2 → output["
-              << seq_len << "," << d_model << "]" << std::endl;
+    // --- 2. Forward Pass ---
+    std::cout << "\n--- Probando Forward Pass ---" << std::endl;
+    Tensor input({seq_len, d_model});
+    // (No necesitamos llenar el input con datos para esta prueba de formas)
 
     Tensor output = ffn.forward(input);
+    output.print("Salida del Forward");
+    check_shape(output, {seq_len, d_model}, "Output");
 
-    // Mostrar resultados
-    std::cout << "\nOutput tensor shape: [" << output.get_shape()[0]
-              << ", " << output.get_shape()[1] << "]" << std::endl;
+    // --- 3. Backward Pass ---
+    std::cout << "\n--- Probando Backward Pass ---" << std::endl;
 
-    std::cout << "Output sample (first 10 values of each sequence):" << std::endl;
-    std::vector<float> output_vec = output.to_vector();
-    for (int i = 0; i < seq_len; ++i)
-    {
-        std::cout << "Seq " << i << ": ";
-        for (int j = 0; j < 10; ++j)
-        {
-            std::cout << std::fixed << std::setprecision(3) << output_vec[i * d_model + j] << " ";
-        }
-        std::cout << "..." << std::endl;
-    }
+    // Crear un gradiente falso que simula venir de la capa siguiente.
+    // Debe tener la misma forma que la salida del forward.
+    Tensor grad_output({seq_len, d_model});
+    grad_output.print("Gradiente de entrada (simulado)");
 
-    // Verificaciones
-    const auto &output_shape = output.get_shape();
-    bool shape_correct = (output_shape[0] == seq_len && output_shape[1] == d_model);
+    // ¡Ejecutar el backward pass!
+    Tensor grad_input = ffn.backward(grad_output);
+    grad_input.print("Gradiente de salida (hacia la capa anterior)");
 
-    // Verificar que no son todos ceros
-    bool has_non_zero = false;
-    for (int i = 0; i < 20 && !has_non_zero; ++i)
-    {
-        if (std::abs(output_vec[i]) > 1e-6)
-            has_non_zero = true;
-    }
+    // --- 4. Verificación de Formas de los Gradientes ---
+    std::cout << "\n--- Verificando las formas de los gradientes calculados ---" << std::endl;
 
-    std::cout << "\n=== Verification ===" << std::endl;
-    std::cout << "Shape preservation: " << (shape_correct ? "✓ PASS" : "✗ FAIL") << std::endl;
-    std::cout << "Non-zero outputs: " << (has_non_zero ? "✓ PASS" : "✗ FAIL") << std::endl;
-    std::cout << "Expected shape: [" << seq_len << ", " << d_model << "]" << std::endl;
-    std::cout << "Actual shape: [" << output_shape[0] << ", " << output_shape[1] << "]" << std::endl;
+    // El gradiente de un parámetro debe tener la misma forma que el parámetro mismo.
+    check_shape(*(ffn.w1_.grad_), ffn.w1_.get_shape(), "Gradiente de W1");
+    check_shape(*(ffn.b1_.grad_), ffn.b1_.get_shape(), "Gradiente de B1");
+    check_shape(*(ffn.w2_.grad_), ffn.w2_.get_shape(), "Gradiente de W2");
+    check_shape(*(ffn.b2_.grad_), ffn.b2_.get_shape(), "Gradiente de B2");
 
-    // Mostrar estadísticas básicas
-    float min_val = *std::min_element(output_vec.begin(), output_vec.end());
-    float max_val = *std::max_element(output_vec.begin(), output_vec.end());
-    float mean_val = 0.0f;
-    for (float val : output_vec)
-        mean_val += val;
-    mean_val /= output_vec.size();
+    // El gradiente devuelto debe tener la misma forma que la entrada original.
+    check_shape(grad_input, input.get_shape(), "Gradiente de Input");
 
-    std::cout << "\nOutput statistics:" << std::endl;
-    std::cout << "Min: " << min_val << ", Max: " << max_val << ", Mean: " << mean_val << std::endl;
+    std::cout << "\n\n✓✓✓ ¡Prueba completa del FeedForwardNetwork finalizada con éxito! ✓✓✓" << std::endl;
 
     return 0;
 }

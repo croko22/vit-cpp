@@ -49,63 +49,58 @@ FeedForwardNetwork::FeedForwardNetwork(int d_model, int d_ff)
 
 Tensor FeedForwardNetwork::forward(const Tensor &input)
 {
-    std::cout << "=== DEBUG FeedForward Forward ===" << std::endl;
-
-    // Debug: imprimir formas
-    const auto &input_shape = input.get_shape();
-    const auto &w1_shape = w1_.get_shape();
-    const auto &b1_shape = b1_.get_shape();
-
-    std::cout << "Input shape: [" << input_shape[0] << ", " << input_shape[1] << "]" << std::endl;
-    std::cout << "W1 shape: [" << w1_shape[0] << ", " << w1_shape[1] << "]" << std::endl;
-    std::cout << "B1 shape: [" << b1_shape[0] << ", " << b1_shape[1] << "]" << std::endl;
+    // --- Guardar en el cache para usarlo en backward ---
+    input_cache_ = input;
 
     // 1. Primera proyección lineal
-    Tensor hidden = matmul(input, w1_);
-
-    std::cout << "Hidden shape after matmul: [" << hidden.get_shape()[0] << ", " << hidden.get_shape()[1] << "]" << std::endl;
-
-    // SOLUCIÓN: Suma fila por fila si el bias es [1, d_ff]
-    // O implementa broadcasting en tu clase Tensor
-
-    // Opción 1: Suma manual (temporal)
-    std::vector<float> hidden_data = hidden.to_vector();
-    std::vector<float> bias_data = b1_.to_vector();
-
-    int seq_len = hidden.get_shape()[0];
-    int d_ff = hidden.get_shape()[1];
-
-    for (int i = 0; i < seq_len; ++i)
-    {
-        for (int j = 0; j < d_ff; ++j)
-        {
-            hidden_data[i * d_ff + j] += bias_data[j];
-        }
-    }
-
-    hidden.from_vector(hidden_data);
+    Tensor hidden = matmul(input, w1_) + b1_; // Asumiendo que tu '+' soporta broadcasting
 
     // 2. Aplicar ReLU
     Tensor activated = relu(hidden);
 
-    // 3. Segunda proyección lineal + bias
-    Tensor output = matmul(activated, w2_);
+    // --- Guardar la salida activada en el cache ---
+    hidden_activated_cache_ = activated;
 
-    // Mismo problema con b2_, aplicar la misma solución
-    std::vector<float> output_data = output.to_vector();
-    std::vector<float> bias2_data = b2_.to_vector();
-
-    int d_model = output.get_shape()[1];
-
-    for (int i = 0; i < seq_len; ++i)
-    {
-        for (int j = 0; j < d_model; ++j)
-        {
-            output_data[i * d_model + j] += bias2_data[j];
-        }
-    }
-
-    output.from_vector(output_data);
+    // 3. Segunda proyección lineal
+    Tensor output = matmul(activated, w2_) + b2_;
 
     return output;
+}
+
+Tensor FeedForwardNetwork::backward(const Tensor &grad_output)
+{
+    // Ahora esta función funcionará porque las variables de cache existen
+
+    // 1. Backward a través de la segunda capa lineal (W2, b2)
+    auto [grad_activated, grad_w2] = matmul_backward(grad_output, hidden_activated_cache_, w2_);
+
+    Tensor grad_b2 = sum(grad_output, 0, true);
+    // Acumular gradientes
+    if (b2_.grad_)
+        *(b2_.grad_) = *(b2_.grad_) + grad_b2;
+    if (w2_.grad_)
+        *(w2_.grad_) = *(w2_.grad_) + grad_w2;
+
+    // 2. Backward a través de ReLU
+    Tensor grad_hidden = relu_backward(grad_activated, hidden_activated_cache_);
+
+    // 3. Backward a través de la primera capa lineal (W1, b1)
+    // ¡Esta línea ya no dará error!
+    auto [grad_input, grad_w1] = matmul_backward(grad_hidden, input_cache_, w1_);
+
+    Tensor grad_b1 = sum(grad_hidden, 0, true);
+    if (b1_.grad_)
+        *(b1_.grad_) = *(b1_.grad_) + grad_b1;
+    if (w1_.grad_)
+        *(w1_.grad_) = *(w1_.grad_) + grad_w1;
+
+    return grad_input;
+}
+
+void FeedForwardNetwork::get_parameters(std::vector<Tensor *> &params)
+{
+    params.push_back(&w1_);
+    params.push_back(&b1_);
+    params.push_back(&w2_);
+    params.push_back(&b2_);
 }

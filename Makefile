@@ -1,6 +1,3 @@
-# --- Variables de Configuración ---
-
-# Compilador a usar
 CXX = g++
 
 # Flags del compilador: C++17, todas las advertencias, y le decimos dónde buscar los headers.
@@ -22,20 +19,19 @@ MODEL_SOURCES = $(wildcard $(SRC_DIR)/model/*.cpp) $(wildcard $(SRC_DIR)/core/*.
 MODEL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(MODEL_SOURCES))
 
 # Definimos los objetos que necesita cada ejecutable. Así evitamos repetirnos.
-CORE_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/core/ops.o
-LN_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o
+CORE_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/core/ops.o $(BUILD_DIR)/core/loss.o $(BUILD_DIR)/core/optimizer.o
+LN_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/core/ops.o
 MHA_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/multi_head_attention.o
 FF_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/feedforward.o
-ENC_OBJS = $(MHA_OBJS) $(LN_OBJS) $(FF_OBJS) $(BUILD_DIR)/model/encoder.o
-DEC_OBJS = $(ENC_OBJS) $(BUILD_DIR)/model/decoder.o
-TRANSF_OBJS = $(DEC_OBJS) $(BUILD_DIR)/model/transformer.o
+ENC_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/encoder.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/model/multi_head_attention.o $(BUILD_DIR)/model/feedforward.o
+VIT_OBJS = $(ENC_OBJS) $(BUILD_DIR)/model/vit.o $(BUILD_DIR)/model/patch_embedding.o $(BUILD_DIR)/model/vit.o
 
 
 # --- Reglas de Compilación ---
 
 # La regla por defecto: si solo escribes "make", se ejecutará esto.
 # Construye todos los ejemplos.
-all: layernorm multihead feedforward encoder decoder transformer
+all: layernorm multihead feedforward encoder vit
 
 # Regla genérica para compilar cualquier archivo .cpp en un .o
 # Make es lo suficientemente inteligente para usar esta regla para todos los MODEL_OBJECTS.
@@ -61,13 +57,9 @@ encoder: $(ENC_OBJS)
 	@echo "Linkeando para crear el ejecutable del Encoder..."
 	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_encoder.cpp $^ -o $(BUILD_DIR)/encoder.out
 
-decoder: $(DEC_OBJS)
-	@echo "Linkeando para crear el ejecutable del Decoder..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_decoder.cpp $^ -o $(BUILD_DIR)/decoder.out
-
-transformer: $(TRANSF_OBJS)
-	@echo "Linkeando para crear el ejecutable del Transformer..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_transformer.cpp $^ -o $(BUILD_DIR)/transformer.out
+vit: $(VIT_OBJS)
+	@echo "Linkeando para crear el ejecutable del vit..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_vit.cpp $^ -o $(BUILD_DIR)/vit.out
 
 # Regla para limpiar todo lo compilado
 clean:
@@ -75,4 +67,4 @@ clean:
 	@rm -rf $(BUILD_DIR)
 
 # Le decimos a make que "all" y "clean" no son archivos, sino nombres de comandos.
-.PHONY: all clean layernorm multihead feedforward encoder decoder transformer
+.PHONY: all clean layernorm multihead feedforward encoder vit
