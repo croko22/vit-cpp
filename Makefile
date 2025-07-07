@@ -20,6 +20,7 @@ MODEL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(MODEL_SOURCES))
 
 # Definimos los objetos que necesita cada ejecutable. Así evitamos repetirnos.
 CORE_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/core/ops.o $(BUILD_DIR)/core/loss.o $(BUILD_DIR)/core/optimizer.o
+PE_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/patch_embedding.o
 LN_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/core/ops.o
 MHA_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/multi_head_attention.o
 FF_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/feedforward.o
@@ -41,6 +42,10 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Reglas para construir cada ejecutable final
+patch_embedding: $(PE_OBJS)
+	@echo "Linkeando para crear el ejecutable de Patch Embedding..."
+	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_patch_embedding.cpp $^ -o $(BUILD_DIR)/patch_embedding.out
+
 layernorm: $(LN_OBJS)
 	@echo "Linkeando para crear el ejecutable de LayerNorm..."
 	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_layernorm.cpp $^ -o $(BUILD_DIR)/layernorm.out

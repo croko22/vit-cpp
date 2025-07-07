@@ -76,7 +76,7 @@ chmod +x run.sh
       * `multihead`
       * `feedforward`
       * `encoder`
-      * `transformer`
+      * `vit`
 
     Por ejemplo, para ejecutar la demostración completa del Transformer:
 
@@ -97,9 +97,3 @@ chmod +x run.sh
     ```bash
     ./run.sh clean
     ```
-
-  g++ examples/example_patch_embedding.cpp src/core/tensor.cpp src/model/patch_embedding.cpp src/core/ops.cpp && ./a.
-out
- g++ examples/example_train_mnist.cpp src/model/vit.cpp src/core/loss.cpp src/core/optimizer.cpp src/core/
-tensor.cpp src/core/ops.cpp src/model/encoder.cpp src/model/feedforward.cpp  src/model/layernorm.cpp  src/model/multi_head_attention.cpp src/model/patc
-h_embedding.cpp && ./a.out
