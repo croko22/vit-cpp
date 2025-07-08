@@ -1,5 +1,6 @@
 #include "../../include/model/vit.hpp"
-#include "../../include/core/ops.hpp" // Para matmul y otros
+#include "../../include/core/ops.hpp"
+#include <iostream>
 
 VisionTransformer::VisionTransformer(int image_size, int patch_size, int in_channels, int num_classes,
                                      int d_model, int num_heads, int d_ff, int num_layers)
@@ -26,16 +27,18 @@ Tensor VisionTransformer::forward(const Tensor &image)
     for (auto &layer : encoder_layers_)
     {
         sequence = layer.forward(sequence);
+        encoder_output_shape_cache_ = sequence.get_shape(); // 👈 Esto FALTA
     }
 
     // 3. Extraer la salida del token [CLS] (siempre es el primero de la secuencia)
     Tensor cls_token_output({1, sequence.get_shape()[1]});
+    cls_token_output_cache_ = cls_token_output;
     // Lógica para copiar la primera fila de 'sequence' a 'cls_token_output'...
     // (Esto es una simplificación, tu clase Tensor necesitaría un método para "slice")
-    cls_token_output_cache_ = cls_token_output; // Cache para backward
 
     // 4. Normalización y cabeza de clasificación
     Tensor normalized_output = final_norm_.forward(cls_token_output);
+    normalized_output_cache_ = normalized_output; // Guardar para backward
     Tensor logits = matmul(normalized_output, classification_head_w_) + classification_head_b_;
 
     return logits;
@@ -44,61 +47,58 @@ Tensor VisionTransformer::forward(const Tensor &image)
 // En src/model/vit.cpp
 void VisionTransformer::backward(const Tensor &grad_loss)
 {
-    // En orden inverso al forward
+    std::cout << "[ViT::backward] grad_loss shape: ";
+    grad_loss.print("grad_loss");
+
+    std::cout << "[ViT::backward] normalized_output_cache_ shape: ";
+    normalized_output_cache_.print("normalized_output_cache_");
+
+    std::cout << "[ViT::backward] classification_head_w_ shape: ";
+    classification_head_w_.print("classification_head_w_");
 
     // 4. Backward a través de la cabeza de clasificación
+    std::cout << "[DEBUG] Shapes justo antes de matmul_backward()" << std::endl;
+    std::cout << "grad_loss: ";
+    grad_loss.print("grad_loss");
+    std::cout << "normalized_output_cache_: ";
+    normalized_output_cache_.print("normalized_output_cache_");
+    std::cout << "classification_head_w_: ";
+    classification_head_w_.print("classification_head_w_");
+
     auto [grad_norm_output, grad_w] = matmul_backward(grad_loss, normalized_output_cache_, classification_head_w_);
+
+    std::cout << "[ViT::backward] <- grad_norm_output shape: ";
+    grad_norm_output.print("grad_norm_output");
+
     *(classification_head_w_.grad_) = *(classification_head_w_.grad_) + grad_w;
     *(classification_head_b_.grad_) = *(classification_head_b_.grad_) + sum(grad_loss, 0, true);
 
     // Backward a través de la normalización final
+    std::cout << "[ViT::backward] -> final_norm.backward..." << std::endl;
     Tensor grad_cls_token = final_norm_.backward(grad_norm_output);
+    grad_cls_token.print("grad_cls_token");
 
-    // 3. Crear el gradiente de entrada para la pila de encoders
-    // El gradiente solo existe para el token [CLS], el resto es cero.
+    // Crear tensor de gradientes completo
     Tensor grad_sequence_full(encoder_output_shape_cache_);
-    grad_sequence_full.zero_data(); // Pone todo el tensor a cero
+    grad_sequence_full.zero_data();
+    std::cout << "[ViT::backward] grad_sequence_full (cero) shape: ";
+    grad_sequence_full.print("grad_sequence_full (vacío)");
 
-    // --- CORRECCIÓN CLAVE AQUÍ ---
-    // Colocamos el gradiente del token CLS en la primera fila del gradiente completo.
+    // Insertar gradiente del CLS token
+    std::cout << "[ViT::backward] -> set_row(0, grad_cls_token)..." << std::endl;
     grad_sequence_full.set_row(0, grad_cls_token);
-    // ----------------------------
 
-    // 2. Backward a través de la pila de Encoders
+    // Backward a través de la pila de Encoders
     for (int i = encoder_layers_.size() - 1; i >= 0; --i)
     {
+        std::cout << "[ViT::backward] -> encoder_layers_[" << i << "].backward..." << std::endl;
         grad_sequence_full = encoder_layers_[i].backward(grad_sequence_full);
+        grad_sequence_full.print("grad_sequence_full (post encoder " + std::to_string(i) + ")");
     }
 
-    // 1. Backward a través de la capa de PatchEmbedding
+    std::cout << "[ViT::backward] -> patch_embedding_.backward..." << std::endl;
     patch_embedding_.backward(grad_sequence_full);
 }
-
-// void VisionTransformer::backward(const Tensor &grad_loss)
-// {
-//     // 4. Backward a través de la cabeza de clasificación
-//     // Usamos la variable cacheada en lugar del comentario (solución al error 1)
-//     auto [grad_norm_output, grad_w] = matmul_backward(grad_loss, normalized_output_cache_, classification_head_w_);
-//     *(classification_head_w_.grad_) = grad_w;
-//     *(classification_head_b_.grad_) = grad_loss;
-
-//     Tensor grad_cls_token = final_norm_.backward(grad_norm_output);
-
-//     // 3. Crear el gradiente de entrada para la pila de encoders
-//     // Usamos la forma cacheada en lugar de un método inexistente (solución al error 2)
-//     Tensor grad_sequence_full(encoder_output_shape_cache_);
-//     grad_sequence_full.zero_grad();
-//     // Aquí necesitarás lógica para colocar `grad_cls_token` en la primera fila de `grad_sequence_full`
-
-//     // 2. Backward a través de la pila de Encoders
-//     for (int i = encoder_layers_.size() - 1; i >= 0; --i)
-//     {
-//         grad_sequence_full = encoder_layers_[i].backward(grad_sequence_full);
-//     }
-
-//     // 1. Backward a través de la capa de PatchEmbedding
-//     patch_embedding_.backward(grad_sequence_full);
-// }
 
 void VisionTransformer::get_parameters(std::vector<Tensor *> &params)
 {

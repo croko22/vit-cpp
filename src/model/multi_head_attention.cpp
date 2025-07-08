@@ -46,6 +46,11 @@ MultiHeadAttention::MultiHeadAttention(int d_model, int num_heads)
         val = dist(gen);
     w_o_.from_vector(wo_data);
 
+    w_q_.init_grad();
+    w_k_.init_grad();
+    w_v_.init_grad();
+    w_o_.init_grad();
+
     std::cout << "MultiHeadAttention initialized: d_model=" << d_model
               << ", num_heads=" << num_heads << ", d_k=" << d_k << std::endl;
 }
@@ -81,41 +86,80 @@ Tensor MultiHeadAttention::forward(const Tensor &query, const Tensor &key, const
 
 std::tuple<Tensor, Tensor, Tensor> MultiHeadAttention::backward(const Tensor &grad_output)
 {
-    // El backward pass sigue la regla de la cadena en orden inverso al forward pass.
+    std::cout << "[MHA::backward] grad_output shape: ";
+    grad_output.print("grad_output");
 
     // 1. Backward a través de la proyección de salida (W_o)
-    auto [grad_context, grad_w_o] = matmul_backward(grad_output, context_, w_o_);
-    *(w_o_.grad_) = grad_w_o; // Actualizar el gradiente del peso W_o
+    std::cout << "[MHA::backward] context_ shape: ";
+    context_.print("context_");
+    std::cout << "[MHA::backward] w_o_ shape: ";
+    w_o_.print("w_o_");
 
-    // 2. Backward a través de matmul(attention_weights, V')
+    auto [grad_context, grad_w_o] = matmul_backward(grad_output, context_, w_o_);
+    *(w_o_.grad_) = grad_w_o;
+
+    std::cout << "[MHA::backward] grad_context shape: ";
+    grad_context.print("grad_context");
+
+    // 2. Backward matmul(attention_weights, V')
+    std::cout << "[MHA::backward] attention_weights_ shape: ";
+    attention_weights_.print("attention_weights_");
+    std::cout << "[MHA::backward] v_proj_ shape: ";
+    v_proj_.print("v_proj_");
+
     auto [grad_attention_weights, grad_v_proj] = matmul_backward(grad_context, attention_weights_, v_proj_);
 
-    // 3. Backward a través de Softmax
+    // 3. Backward Softmax
+    std::cout << "[MHA::backward] softmax_backward()..." << std::endl;
     Tensor grad_scaled_scores = softmax_backward(grad_attention_weights, attention_weights_);
 
-    // 4. Backward a través del escalamiento (operación elemental)
+    // 4. Backward escalamiento
+    std::cout << "[MHA::backward] scaling backward..." << std::endl;
     Tensor grad_scores = grad_scaled_scores * scale_;
+    grad_scores.print("grad_scores");
 
-    // 5. Backward a través de matmul(Q', K'.T)
+    // Validación antes del transpose
+    if (q_proj_.get_shape().size() < 2 || k_proj_.get_shape().size() < 2)
+    {
+        std::cerr << "[ERROR] q_proj_ o k_proj_ no son 2D" << std::endl;
+        q_proj_.print("q_proj_");
+        k_proj_.print("k_proj_");
+        std::abort();
+    }
+
+    // 5. Backward matmul(Q', K'.T)
+    std::cout << "[MHA::backward] q_proj_ shape: ";
+    q_proj_.print("q_proj_");
+    std::cout << "[MHA::backward] k_proj_ shape: ";
+    k_proj_.print("k_proj_");
+
     auto [grad_q_proj, grad_k_proj_T] = matmul_backward(grad_scores, q_proj_, k_proj_.transpose());
     Tensor grad_k_proj = grad_k_proj_T.transpose();
 
-    // 6. Propagar gradientes a través de las proyecciones iniciales (W_q, W_k, W_v)
-    // Para cada proyección, calculamos el gradiente del peso y el gradiente de la entrada.
+    // 6. Backward de proyecciones iniciales
+    std::cout << "[MHA::backward] query_input_ shape: ";
+    query_input_.print("query_input_");
+    std::cout << "[MHA::backward] key_input_ shape: ";
+    key_input_.print("key_input_");
+    std::cout << "[MHA::backward] value_input_ shape: ";
+    value_input_.print("value_input_");
+
     auto [grad_query, grad_w_q] = matmul_backward(grad_q_proj, query_input_, w_q_);
     *(w_q_.grad_) = grad_w_q;
 
     auto [grad_key, grad_w_k] = matmul_backward(grad_k_proj, key_input_, w_k_);
     *(w_k_.grad_) = grad_w_k;
 
-    // El grad_v_proj ya lo calculamos en el paso 2. Ahora lo propagamos a través de W_v.
     auto [grad_value, grad_w_v] = matmul_backward(grad_v_proj, value_input_, w_v_);
     *(w_v_.grad_) = grad_w_v;
 
-    // Devolvemos los gradientes con respecto a las entradas originales (query, key, value).
-    // En self-attention (encoder), estos tres gradientes se sumarían, ya que la entrada es la misma.
-    // En cross-attention (decoder), grad_query iría al sub-bloque anterior del decoder,
-    // mientras que grad_key y grad_value irían hacia la salida del encoder.
+    std::cout << "[MHA::backward] grad_query shape: ";
+    grad_query.print("grad_query");
+    std::cout << "[MHA::backward] grad_key shape: ";
+    grad_key.print("grad_key");
+    std::cout << "[MHA::backward] grad_value shape: ";
+    grad_value.print("grad_value");
+
     return {grad_query, grad_key, grad_value};
 }
 

@@ -23,5 +23,5 @@ public:
      * @brief Calcula el gradiente inicial (dLoss / dLogits).
      * @return Un tensor con el gradiente para iniciar el backward pass.
      */
-    Tensor backward();
+    Tensor backward(const Tensor &logits, int label);
 };

@@ -1,4 +1,5 @@
 #include "../../include/model/encoder.hpp"
+#include <iostream>
 
 EncoderLayer::EncoderLayer(int d_model, int num_heads, int d_ff)
     : attention_(d_model, num_heads),
@@ -33,33 +34,39 @@ Tensor EncoderLayer::forward(const Tensor &input)
 
 Tensor EncoderLayer::backward(const Tensor &grad_output)
 {
-    // 4. Backward a través de Add & Norm 2
-    // Asumimos que norm2_.backward() ya no es ficticio.
-    Tensor grad_from_norm2 = norm2_.backward(grad_output);
+    std::cout << "[Encoder::backward] grad_output: ";
+    grad_output.print("grad_output");
 
-    // El gradiente se propaga a ambas ramas de la suma (y_hat = x + f(x))
+    Tensor grad_from_norm2 = norm2_.backward(grad_output);
+    grad_from_norm2.print("grad_from_norm2");
+
     Tensor grad_sublayer1_from_residual2 = grad_from_norm2;
     Tensor grad_ffn_output = grad_from_norm2;
 
-    // 3. Backward a través de Feed-Forward
     Tensor grad_sublayer1_from_ffn = feed_forward_.backward(grad_ffn_output);
+    grad_sublayer1_from_ffn.print("grad_sublayer1_from_ffn");
 
-    // Sumar los gradientes que llegan al mismo punto (salida de la primera subcapa)
     Tensor grad_sublayer1_total = grad_sublayer1_from_residual2 + grad_sublayer1_from_ffn;
+    grad_sublayer1_total.print("grad_sublayer1_total");
 
-    // 2. Backward a través de Add & Norm 1
     Tensor grad_from_norm1 = norm1_.backward(grad_sublayer1_total);
+    grad_from_norm1.print("grad_from_norm1");
 
-    // El gradiente se propaga a ambas ramas
     Tensor grad_input_from_residual1 = grad_from_norm1;
     Tensor grad_attn_output = grad_from_norm1;
 
-    // 1. Backward a través de Multi-Head Attention
-    auto [grad_q, grad_k, grad_v] = attention_.backward(grad_attn_output);
-    Tensor grad_input_from_attn = grad_q + grad_k + grad_v;
+    std::cout << "[Encoder::backward] -> attention_.backward..." << std::endl;
 
-    // Sumar los gradientes que llegan a la entrada original de la capa
+    auto [grad_q, grad_k, grad_v] = attention_.backward(grad_attn_output);
+    grad_q.print("grad_q");
+    grad_k.print("grad_k");
+    grad_v.print("grad_v");
+
+    Tensor grad_input_from_attn = grad_q + grad_k + grad_v;
+    grad_input_from_attn.print("grad_input_from_attn");
+
     Tensor grad_input = grad_input_from_residual1 + grad_input_from_attn;
+    grad_input.print("grad_input");
 
     return grad_input;
 }

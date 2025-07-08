@@ -15,23 +15,13 @@ private:
     Tensor decoder_output;
 
 public:
-    // El constructor ya no necesita vocab_size ni max_seq_len
     Transformer(int num_layers, int d_model, int num_heads, int d_ff, int target_vocab_size);
-
-    /**
-     * @brief El paso forward completo del modelo Transformer.
-     * @param src_tensor Tensor pre-procesado de la secuencia de entrada [src_len, d_model].
-     * @param tgt_tensor Tensor pre-procesado de la secuencia de salida [tgt_len, d_model].
-     * @return Tensor de logits (sin softmax) con forma [tgt_len, target_vocab_size].
-     */
     Tensor forward(const Tensor &src_tensor, const Tensor &tgt_tensor);
     void backward(const Tensor &grad_output);
-    void step(float learning_rate);
     void get_parameters(std::vector<Tensor *> &params);
 
 private:
     Tensor encode(const Tensor &src_tensor);
-    Tensor decode(const Tensor &tgt_tensor, const Tensor &encoder_output);
     static Tensor create_look_ahead_mask(int size);
 };
 

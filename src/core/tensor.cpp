@@ -261,8 +261,6 @@ void Tensor::zero_data()
         memset(data_, 0, size_ * sizeof(float));
 }
 
-// ... al final de src/core/tensor.cpp
-
 Tensor Tensor::get_row(int row_index) const
 {
     if (this->get_dims() != 2)
