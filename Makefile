@@ -1,11 +1,12 @@
 CXX = g++
 
 # Flags del compilador: C++17, todas las advertencias, y le decimos dónde buscar los headers.
-CXXFLAGS = -std=c++17 -Wall -Iinclude
+CXXFLAGS = -std=c++17 -Wall -Iinclude -O3
 
 # Directorios
 SRC_DIR = src
 EXAMPLE_DIR = examples
+APP_DIR = app
 BUILD_DIR = build
 
 # --- Archivos Fuente y Objeto ---
@@ -27,12 +28,21 @@ FF_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/feedforward.o
 ENC_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/encoder.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/model/multi_head_attention.o $(BUILD_DIR)/model/feedforward.o
 VIT_OBJS = $(ENC_OBJS) $(BUILD_DIR)/model/vit.o $(BUILD_DIR)/model/patch_embedding.o $(BUILD_DIR)/model/vit.o
 
+# Objetos específicos para el entrenamiento
+TRAIN_OBJS = $(BUILD_DIR)/core/activation.o \
+			 $(BUILD_DIR)/core/random.o \
+			 $(BUILD_DIR)/core/tensor.o \
+			 $(BUILD_DIR)/model/vit.o \
+			 $(BUILD_DIR)/model/encoder.o \
+			 $(BUILD_DIR)/model/layernorm.o \
+			 $(BUILD_DIR)/model/linear.o \
+			 $(BUILD_DIR)/model/mlp.o
 
 # --- Reglas de Compilación ---
 
 # La regla por defecto: si solo escribes "make", se ejecutará esto.
 # Construye todos los ejemplos.
-all: layernorm multihead feedforward encoder vit
+all: layernorm multihead feedforward encoder vit train
 
 # Regla genérica para compilar cualquier archivo .cpp en un .o
 # Make es lo suficientemente inteligente para usar esta regla para todos los MODEL_OBJECTS.
@@ -66,10 +76,20 @@ vit: $(VIT_OBJS)
 	@echo "Linkeando para crear el ejecutable del vit..."
 	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_vit.cpp $^ -o $(BUILD_DIR)/vit.out
 
+# Nueva regla para el entrenamiento
+train: $(TRAIN_OBJS)
+	@echo "Linkeando para crear el ejecutable de entrenamiento..."
+	$(CXX) $(CXXFLAGS) $(APP_DIR)/train.cpp $^ -o $(BUILD_DIR)/train.out
+
+# Comando para ejecutar el entrenamiento
+run_train: train
+	@echo "Ejecutando entrenamiento..."
+	./$(BUILD_DIR)/train.out
+
 # Regla para limpiar todo lo compilado
 clean:
 	@echo "Limpiando archivos de compilación..."
 	@rm -rf $(BUILD_DIR)
 
-# Le decimos a make que "all" y "clean" no son archivos, sino nombres de comandos.
-.PHONY: all clean layernorm multihead feedforward encoder vit
+# Le decimos a make que estos no son archivos, sino nombres de comandos.
+.PHONY: all clean layernorm multihead feedforward encoder vit train run_train
