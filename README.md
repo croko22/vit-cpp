@@ -55,45 +55,40 @@ chmod +x run.sh
 
 **2. Comandos disponibles:**
 
-  * **Construir todos los ejemplos:**
-    Compila todas las demostraciones de los componentes (LayerNorm, Encoder, Transformer, etc.) y deja los ejecutables en la carpeta `build/`.
+* **Entrenar el modelo:**
+  Entrena un Vision Transformer con los datasets especificados.
 
-    ```bash
-    ./run.sh build
-    ```
+  ```bash
+  ./run.sh train <archivo_entrenamiento.csv> <archivo_prueba.csv>
+  ```
 
-  * **Compilar y ejecutar un ejemplo específico:**
-    Este comando compila (si es necesario) y ejecuta el ejemplo que especifiques.
+  Ejemplo:
+  ```bash
+  ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv
+  ```
 
-    ```bash
-    ./run.sh run <nombre_del_ejemplo>
-    ```
+* **Hacer inferencia con imagen específica:**
+  Realiza predicción sobre una imagen específica usando un modelo entrenado.
 
-    Nombres de ejemplos disponibles:
+  ```bash
+  ./run.sh infer <modelo.bin> <imagen.csv>
+  ```
 
-      * `patch_embedding`
-      * `layernorm`
-      * `multihead`
-      * `feedforward`
-      * `encoder`
-      * `vit`
+  Ejemplo:
+  ```bash
+  ./run.sh infer models/vit_20250715_161742.bin data/predict/sample_imagen.csv
+  ```
 
-    Por ejemplo, para ejecutar la demostración completa del Transformer:
+* **Predicción automática:**
+  Extrae automáticamente una imagen aleatoria del dataset de prueba y realiza predicción.
 
-    ```bash
-    ./run.sh run transformer
-    ```
+  ```bash
+  ./run.sh predict
+  ```
 
-  * **Probar todo el proyecto:**
-    Este comando compila todos los ejemplos y los ejecuta uno por uno en secuencia. Es útil para verificar que todos los componentes funcionan correctamente.
+* **Limpiar el proyecto:**
+  Elimina la carpeta `build/` y todos los archivos compilados.
 
-    ```bash
-    ./run.sh test
-    ```
-
-  * **Limpiar el proyecto:**
-    Elimina la carpeta `build/` y todos los archivos compilados.
-
-    ```bash
-    ./run.sh clean
-    ```
+  ```bash
+  ./run.sh clean
+  ```

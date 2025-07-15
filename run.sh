@@ -1,58 +1,108 @@
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' 
+#!/bin/bash
+# filepath: run.sh
 
-usage() {
-    echo -e "${YELLOW}Uso: $0 [comando] [argumento]${NC}"
-    echo "Comandos:"
-    echo "  build         Compila todos los ejemplos."
-    echo "  run [ejemplo] Compila y ejecuta un ejemplo específico."
-    echo "                Ejemplos: layernorm, multihead, feedforward, encoder, transformer"
-    echo "  test          Compila y ejecuta todos los ejemplos en secuencia."
-    echo "  clean         Limpia todos los archivos compilados."
-    echo "  help          Muestra este mensaje de ayuda."
+BUILD_DIR="build"
+
+# Función de ayuda
+show_help() {
+    echo "Uso: ./run.sh <comando> [argumentos...]"
+    echo ""
+    echo "Comandos disponibles:"
+    echo "  train <train.csv> <test.csv>     - Entrenar modelo"
+    echo "  infer <modelo.bin> <imagen.csv>  - Hacer inferencia"
+    echo "  predict                          - Extraer imagen y predecir"
+    echo "  clean                            - Limpiar archivos build"
+    echo ""
+    echo "Ejemplos:"
+    echo "  ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv"
+    echo "  ./run.sh infer models/modelo.bin data/predict/imagen.csv"
+    echo "  ./run.sh predict"
 }
 
-main() {
-    COMMAND=$1
-    ARG=$2
+# Verificar argumentos
+if [ $# -eq 0 ]; then
+    show_help
+    exit 1
+fi
 
-    case "$COMMAND" in
-        build)
-            echo -e "${GREEN}--- Construyendo todos los ejemplos ---${NC}"
-            make all
-            ;;
-        run)
-            if [ -z "$ARG" ]; then
-                echo -e "${RED}Error: El comando 'run' requiere el nombre de un ejemplo.${NC}"
-                usage
-                exit 1
-            fi
-            echo -e "${GREEN}--- Compilando y ejecutando '$ARG' ---${NC}"
-            make "$ARG" && ./build/"$ARG".out
-            ;;
-        test)
-            echo -e "${GREEN}--- Ejecutando todas las pruebas ---${NC}"
-            make all
-            if [ $? -eq 0 ]; then
-                for example in layernorm multihead feedforward encoder transformer; do
-                    echo -e "\n${YELLOW}--- Probando: $example ---${NC}"
-                    ./build/"$example".out
-                done
-                echo -e "\n${GREEN}--- Todas las pruebas se ejecutaron con éxito ---${NC}"
-            else
-                echo -e "${RED}La compilación falló. No se pueden ejecutar las pruebas.${NC}"
-            fi
-            ;;
-        clean)
-            echo -e "${GREEN}--- Limpiando el proyecto ---${NC}"
-            make clean
-            ;;
-        help|*)
-            usage
-            ;;
-    esac
-}
+COMMAND=$1
+shift
 
-main "$@"
+case $COMMAND in
+    "train")
+        if [ $# -ne 2 ]; then
+            echo "Error: train requiere 2 argumentos"
+            echo "Uso: ./run.sh train <train.csv> <test.csv>"
+            exit 1
+        fi
+        
+        echo "Compilando entrenamiento..."
+        make train
+        
+        if [ $? -eq 0 ]; then
+            echo "Ejecutando entrenamiento..."
+            ./${BUILD_DIR}/train.out "$1" "$2"
+        else
+            echo "Error en compilación"
+            exit 1
+        fi
+        ;;
+        
+    "infer")
+        if [ $# -ne 2 ]; then
+            echo "Error: infer requiere 2 argumentos"
+            echo "Uso: ./run.sh infer <modelo.bin> <imagen.csv>"
+            exit 1
+        fi
+        
+        echo "Compilando inferencia..."
+        make infer
+        
+        if [ $? -eq 0 ]; then
+            echo "Ejecutando inferencia..."
+            ./${BUILD_DIR}/infer.out "$1" "$2"
+        else
+            echo "Error en compilación"
+            exit 1
+        fi
+        ;;
+        
+    "predict")
+        echo "Compilando inferencia..."
+        make infer
+        
+        if [ $? -ne 0 ]; then
+            echo "Error en compilación"
+            exit 1
+        fi
+        
+        echo "Extrayendo imagen aleatoria..."
+        python3 scripts/extract_image.py data/mnist/mnist_test.csv
+        
+        MODEL=$(ls models/*.bin 2>/dev/null | head -1)
+        IMAGE=$(ls data/predict/*_raw.csv 2>/dev/null | head -1)
+        
+        if [ -z "$MODEL" ] || [ -z "$IMAGE" ]; then
+            echo "Error: No se encontró modelo o imagen"
+            exit 1
+        fi
+        
+        echo "Ejecutando inferencia..."
+        ./${BUILD_DIR}/infer.out "$MODEL" "$IMAGE"
+        ;;
+        
+    "clean")
+        echo "Limpiando archivos build..."
+        make clean
+        ;;
+        
+    "help"|"-h"|"--help")
+        show_help
+        ;;
+        
+    *)
+        echo "Comando desconocido: $COMMAND"
+        show_help
+        exit 1
+        ;;
+esac
