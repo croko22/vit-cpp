@@ -38,7 +38,8 @@
 *.cubin
 *.fatbin
 
-/data
 /build
+/data
+/models
 
 .vscode

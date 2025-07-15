@@ -11,6 +11,7 @@
 #include <string>
 #include <sstream>
 #include <map>
+#include <chrono>
 #include "../include/core/random.h"
 #include "../include/core/tensor.h"
 #include "../include/core/activation.h"
@@ -162,7 +163,8 @@ int main()
 
     DataGenerator data_gen;
 
-    data_gen.load_mnist_data("./data/mnist/fashion-mnist_train.csv", 10000, num_classes);
+    data_gen.load_mnist_data("./data/mnist/fashion-mnist_train.csv", 100, num_classes);
+    // data_gen.load_mnist_data("./data/mnist/fashion-mnist_train.csv", 10000, num_classes);
 
     auto [train_images, train_labels] = data_gen.get_train_data();
     auto [val_images, val_labels] = data_gen.get_val_data();
@@ -275,6 +277,18 @@ int main()
     cout << "\nResultados finales:" << endl;
     cout << "- Pérdida: " << fixed << setprecision(4) << test_loss / test_images.size()
          << " | Precisión: " << setprecision(2) << (float)test_correct / test_images.size() * 100 << "%" << endl;
+
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto tm = *std::localtime(&time_t);
+
+    std::ostringstream filename;
+    filename << "./models/vit_"
+             << std::put_time(&tm, "%Y%m%d_%H%M%S")
+             << ".bin";
+
+    vit.save_model(filename.str());
+    cout << "Modelo guardado como: " << filename.str() << endl;
 
     return 0;
 }

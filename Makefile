@@ -1,95 +1,192 @@
 CXX = g++
-
-# Flags del compilador: C++17, todas las advertencias, y le decimos dónde buscar los headers.
-CXXFLAGS = -std=c++17 -Wall -Iinclude -O3
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -Iinclude
 
 # Directorios
 SRC_DIR = src
-EXAMPLE_DIR = examples
-APP_DIR = app
 BUILD_DIR = build
+EXAMPLES_DIR = examples
+APP_DIR = app
 
-# --- Archivos Fuente y Objeto ---
+# Archivos fuente automáticos
+CORE_SOURCES = $(wildcard $(SRC_DIR)/core/*.cpp)
+MODEL_SOURCES = $(wildcard $(SRC_DIR)/model/*.cpp)
 
-# Creamos una lista de todos los archivos .cpp de nuestro modelo
-# La función wildcard busca todos los archivos que coincidan con el patrón.
-MODEL_SOURCES = $(wildcard $(SRC_DIR)/model/*.cpp) $(wildcard $(SRC_DIR)/core/*.cpp)
-
-# Convertimos la lista de fuentes a una lista de archivos objeto (.o) que se guardarán en build/
-# Ejemplo: src/core/tensor.cpp -> build/core/tensor.o
+# Objetos correspondientes
+CORE_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(CORE_SOURCES))
 MODEL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(MODEL_SOURCES))
+ALL_OBJECTS = $(CORE_OBJECTS) $(MODEL_OBJECTS)
 
-# Definimos los objetos que necesita cada ejecutable. Así evitamos repetirnos.
-CORE_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/core/ops.o $(BUILD_DIR)/core/loss.o $(BUILD_DIR)/core/optimizer.o
-PE_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/patch_embedding.o
-LN_OBJS = $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/core/ops.o
-MHA_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/multi_head_attention.o
-FF_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/feedforward.o
-ENC_OBJS = $(CORE_OBJS) $(BUILD_DIR)/model/encoder.o $(BUILD_DIR)/model/layernorm.o $(BUILD_DIR)/model/multi_head_attention.o $(BUILD_DIR)/model/feedforward.o
-VIT_OBJS = $(ENC_OBJS) $(BUILD_DIR)/model/vit.o $(BUILD_DIR)/model/patch_embedding.o $(BUILD_DIR)/model/vit.o
+# Ejecutables
+EXECUTABLES = tensor_test layernorm multihead feedforward encoder vit patch_embedding train
 
-# Objetos específicos para el entrenamiento
-TRAIN_OBJS = $(BUILD_DIR)/core/activation.o \
-			 $(BUILD_DIR)/core/random.o \
-			 $(BUILD_DIR)/core/tensor.o \
-			 $(BUILD_DIR)/model/vit.o \
-			 $(BUILD_DIR)/model/encoder.o \
-			 $(BUILD_DIR)/model/layernorm.o \
-			 $(BUILD_DIR)/model/linear.o \
-			 $(BUILD_DIR)/model/mlp.o
+# --- REGLAS PRINCIPALES ---
 
-# --- Reglas de Compilación ---
+all: $(EXECUTABLES)
 
-# La regla por defecto: si solo escribes "make", se ejecutará esto.
-# Construye todos los ejemplos.
-all: layernorm multihead feedforward encoder vit train
-
-# Regla genérica para compilar cualquier archivo .cpp en un .o
-# Make es lo suficientemente inteligente para usar esta regla para todos los MODEL_OBJECTS.
+# Regla genérica para compilar .cpp a .o
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(dir $@) # Crea el directorio de build si no existe (ej. build/core/)
-	@echo "Compilando $< -> $@"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@mkdir -p $(dir $@)
+	@echo "🔨 Compilando $<"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Reglas para construir cada ejecutable final
-patch_embedding: $(PE_OBJS)
-	@echo "Linkeando para crear el ejecutable de Patch Embedding..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_patch_embedding.cpp $^ -o $(BUILD_DIR)/patch_embedding.out
+# --- EJECUTABLES INDIVIDUALES ---
 
-layernorm: $(LN_OBJS)
-	@echo "Linkeando para crear el ejecutable de LayerNorm..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_layernorm.cpp $^ -o $(BUILD_DIR)/layernorm.out
+tensor_test: $(BUILD_DIR)/core/tensor.o
+	@echo "🔗 Linkeando Tensor Test"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_tensor.cpp $^ -o $(BUILD_DIR)/$@.out
 
-multihead: $(MHA_OBJS)
-	@echo "Linkeando para crear el ejecutable de Multihead Attention..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_multihead_attention.cpp $^ -o $(BUILD_DIR)/multihead.out
+layernorm: $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/layernorm.o
+	@echo "🔗 Linkeando LayerNorm"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_layernorm.cpp $^ -o $(BUILD_DIR)/$@.out
 
-feedforward: $(FF_OBJS)
-	@echo "Linkeando para crear el ejecutable de FeedForward..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_feedforward.cpp $^ -o $(BUILD_DIR)/feedforward.out
+multihead: $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/multi_head_attention.o
+	@echo "🔗 Linkeando MultiHead Attention"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_multihead_attention.cpp $^ -o $(BUILD_DIR)/$@.out
 
-encoder: $(ENC_OBJS)
-	@echo "Linkeando para crear el ejecutable del Encoder..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_encoder.cpp $^ -o $(BUILD_DIR)/encoder.out
+feedforward: $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/feedforward.o
+	@echo "🔗 Linkeando FeedForward"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_feedforward.cpp $^ -o $(BUILD_DIR)/$@.out
 
-vit: $(VIT_OBJS)
-	@echo "Linkeando para crear el ejecutable del vit..."
-	$(CXX) $(CXXFLAGS) $(EXAMPLE_DIR)/example_vit.cpp $^ -o $(BUILD_DIR)/vit.out
+encoder: $(BUILD_DIR)/core/tensor.o \
+		 $(BUILD_DIR)/model/layernorm.o \
+		 $(BUILD_DIR)/model/multi_head_attention.o \
+		 $(BUILD_DIR)/model/feedforward.o \
+		 $(BUILD_DIR)/model/encoder.o
+	@echo "🔗 Linkeando Encoder"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_encoder.cpp $^ -o $(BUILD_DIR)/$@.out
 
-# Nueva regla para el entrenamiento
-train: $(TRAIN_OBJS)
-	@echo "Linkeando para crear el ejecutable de entrenamiento..."
-	$(CXX) $(CXXFLAGS) $(APP_DIR)/train.cpp $^ -o $(BUILD_DIR)/train.out
+patch_embedding: $(BUILD_DIR)/core/tensor.o $(BUILD_DIR)/model/patch_embedding.o
+	@echo "🔗 Linkeando Patch Embedding"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_patch_embedding.cpp $^ -o $(BUILD_DIR)/$@.out
 
-# Comando para ejecutar el entrenamiento
+vit: $(BUILD_DIR)/core/tensor.o \
+	 $(BUILD_DIR)/model/layernorm.o \
+	 $(BUILD_DIR)/model/multi_head_attention.o \
+	 $(BUILD_DIR)/model/feedforward.o \
+	 $(BUILD_DIR)/model/encoder.o \
+	 $(BUILD_DIR)/model/patch_embedding.o \
+	 $(BUILD_DIR)/model/vit.o
+	@echo "🔗 Linkeando Vision Transformer"
+	@$(CXX) $(CXXFLAGS) $(EXAMPLES_DIR)/example_vit.cpp $^ -o $(BUILD_DIR)/$@.out
+
+train: $(BUILD_DIR)/core/activation.o \
+	   $(BUILD_DIR)/core/random.o \
+	   $(BUILD_DIR)/core/tensor.o \
+	   $(BUILD_DIR)/model/vit.o \
+	   $(BUILD_DIR)/model/encoder.o \
+	   $(BUILD_DIR)/model/layernorm.o \
+	   $(BUILD_DIR)/model/linear.o \
+	   $(BUILD_DIR)/model/mlp.o
+	@echo "🔗 Linkeando Training App"
+	@$(CXX) $(CXXFLAGS) $(APP_DIR)/train.cpp $^ -o $(BUILD_DIR)/$@.out
+
+infer: $(BUILD_DIR)/core/activation.o \
+	   $(BUILD_DIR)/core/random.o \
+	   $(BUILD_DIR)/core/tensor.o \
+	   $(BUILD_DIR)/model/vit.o \
+	   $(BUILD_DIR)/model/encoder.o \
+	   $(BUILD_DIR)/model/layernorm.o \
+	   $(BUILD_DIR)/model/linear.o \
+	   $(BUILD_DIR)/model/mlp.o
+	@echo "🔗 Linkeando Inference App"
+	@$(CXX) $(CXXFLAGS) $(APP_DIR)/infer.cpp $^ -o $(BUILD_DIR)/$@.out
+
+
+# --- COMANDOS DE EJECUCIÓN ---
+
+run_%: %
+	@echo "🚀 Ejecutando $*"
+	@./$(BUILD_DIR)/$*.out
+
+# Comandos específicos
 run_train: train
-	@echo "Ejecutando entrenamiento..."
-	./$(BUILD_DIR)/train.out
+	@echo "🏃 Iniciando entrenamiento..."
+	@./$(BUILD_DIR)/train.out
 
-# Regla para limpiar todo lo compilado
+run_infer: infer
+	@echo "🏃 Iniciando inferencia..."
+	@# Se agrupan todos los comandos en un solo bloque de shell para que las variables persistan.
+	@MODEL=$$(ls models/*.bin 2>/dev/null | head -1); \
+	IMAGE=$$(ls data/predict/*.csv 2>/dev/null | head -1); \
+	if [ -z "$$MODEL" ] || [ -z "$$IMAGE" ]; then \
+		echo "❌ Error: No se encontró un modelo (.bin) en la carpeta 'models/' o una imagen (.csv) en 'data/predict/'"; \
+		exit 1; \
+	fi; \
+	echo "   Modelo a usar: $$MODEL"; \
+	echo "   Imagen a usar: $$IMAGE"; \
+	echo "------------------------------------------"; \
+	echo "Ejecutando el programa de inferencia..."; \
+	./$(BUILD_DIR)/infer.out "$$MODEL" "$$IMAGE"
+
+# Comando para hacer predicción completa
+predict: infer
+	@echo "🎯 Predicción completa:"
+	@echo "1. Extrayendo imagen aleatoria..."
+	@python3 scripts/extract_image.py data/mnist/mnist_test.csv -o data/predict -n 1
+	@echo "2. Ejecutando inferencia..."
+	@MODEL=$$(ls models/*.bin | head -1); \
+	IMAGE=$$(ls data/predict/*.csv | head -1); \
+	if [ -n "$$MODEL" ] && [ -n "$$IMAGE" ]; then \
+		./$(BUILD_DIR)/infer.out "$$MODEL" "$$IMAGE"; \
+	else \
+		echo "❌ No se encontró modelo o imagen"; \
+	fi
+
+# --- UTILIDADES ---
+
+# Compilar solo los objetos
+compile: $(ALL_OBJECTS)
+	@echo "✅ Todos los objetos compilados"
+
+# Mostrar información
+info:
+	@echo "📊 Información del proyecto:"
+	@echo "  Core sources: $(words $(CORE_SOURCES)) archivos"
+	@echo "  Model sources: $(words $(MODEL_SOURCES)) archivos"
+	@echo "  Total objects: $(words $(ALL_OBJECTS)) archivos"
+	@echo "  Ejecutables: $(EXECUTABLES)"
+
+# Verificar archivos faltantes
+check:
+	@echo "🔍 Verificando archivos..."
+	@for exe in $(EXECUTABLES); do \
+		if [ -f "$(EXAMPLES_DIR)/example_$$exe.cpp" ] || [ -f "$(APP_DIR)/$$exe.cpp" ]; then \
+			echo "✅ $$exe: archivo fuente encontrado"; \
+		else \
+			echo "❌ $$exe: archivo fuente FALTANTE"; \
+		fi \
+	done
+
+# Limpiar
 clean:
-	@echo "Limpiando archivos de compilación..."
+	@echo "🧹 Limpiando..."
 	@rm -rf $(BUILD_DIR)
 
-# Le decimos a make que estos no son archivos, sino nombres de comandos.
-.PHONY: all clean layernorm multihead feedforward encoder vit train run_train
+# Limpiar y recompilar todo
+rebuild: clean all
+
+# --- AYUDA ---
+
+help:
+	@echo "🛠️  Makefile para Marian - Vision Transformer"
+	@echo ""
+	@echo "Comandos disponibles:"
+	@echo "  make              - Compilar todo"
+	@echo "  make <target>     - Compilar target específico"
+	@echo "  make run_<target> - Compilar y ejecutar target"
+	@echo ""
+	@echo "Targets disponibles:"
+	@echo "  $(EXECUTABLES)"
+	@echo ""
+	@echo "Utilidades:"
+	@echo "  make compile      - Solo compilar objetos"
+	@echo "  make clean        - Limpiar archivos de build"
+	@echo "  make rebuild      - Limpiar y recompilar todo"
+	@echo "  make info         - Mostrar información del proyecto"
+	@echo "  make check        - Verificar archivos faltantes"
+	@echo "  make help         - Mostrar esta ayuda"
+
+.PHONY: $(EXECUTABLES) all clean compile rebuild info check help run_% run_train
+
+# Evitar borrar archivos intermedios
+.PRECIOUS: $(BUILD_DIR)/%.o
