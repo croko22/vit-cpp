@@ -1,144 +1,316 @@
-#include "../../include/model/vit.hpp"
-#include "../../include/core/ops.hpp"
+#include "../../include/model/vit.h"
+#include "../../include/core/activation.h"
+#include "../../include/core/random.h"
 #include <iostream>
+#include <algorithm>
+#include <fstream>
 
-VisionTransformer::VisionTransformer(int image_size, int patch_size, int in_channels, int num_classes,
-                                     int d_model, int num_heads, int d_ff, int num_layers)
-    : patch_embedding_(image_size, patch_size, in_channels, d_model),
-      final_norm_(d_model),
-      classification_head_w_({d_model, num_classes}),
-      classification_head_b_({1, num_classes})
+VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes)
+    : image_size(img_size), patch_size(patch_sz), d_model(d_mod),
+      num_layers(n_layers), num_classes(n_classes),
+      num_patches((img_size / patch_sz) * (img_size / patch_sz)),
+      patch_embedding(patch_sz * patch_sz, d_mod),
+      class_token(1, d_mod),
+      position_embeddings(num_patches + 1, d_mod),
+      classification_head(d_mod, n_classes),
+      final_ln(d_mod)
 {
-    for (int i = 0; i < num_layers; ++i)
+
+    for (int i = 0; i < d_model; i++)
     {
-        encoder_layers_.emplace_back(d_model, num_heads, d_ff);
+        class_token(0, i) = Random::randn(0.0f, 0.01f);
     }
-    // Inicializar gradientes
-    classification_head_w_.init_grad();
-    classification_head_b_.init_grad();
+    for (int i = 0; i < position_embeddings.rows; i++)
+    {
+        for (int j = 0; j < position_embeddings.cols; j++)
+        {
+            position_embeddings(i, j) = Random::randn(0.0f, 0.01f);
+        }
+    }
+
+    for (int i = 0; i < num_layers; i++)
+    {
+        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model));
+    }
+}
+
+Tensor VisionTransformer::image_to_patches(const Tensor &image)
+{
+    Tensor patches(num_patches, patch_size * patch_size);
+    int patches_per_row = image_size / patch_size;
+    int patch_idx = 0;
+    for (int i = 0; i < patches_per_row; i++)
+    {
+        for (int j = 0; j < patches_per_row; j++)
+        {
+            for (int pi = 0; pi < patch_size; pi++)
+            {
+                for (int pj = 0; pj < patch_size; pj++)
+                {
+                    int img_row = i * patch_size + pi;
+                    int img_col = j * patch_size + pj;
+                    patches(patch_idx, pi * patch_size + pj) = image(img_row, img_col);
+                }
+            }
+            patch_idx++;
+        }
+    }
+    return patches;
 }
 
 Tensor VisionTransformer::forward(const Tensor &image)
 {
-    // 1. Convertir imagen a secuencia de embeddings de parches
-    Tensor sequence = patch_embedding_.forward(image);
 
-    // 2. Pasar la secuencia a través de la pila de Encoders
-    for (auto &layer : encoder_layers_)
+    last_patches = image_to_patches(image);
+
+    Tensor patch_emb = patch_embedding.forward(last_patches);
+
+    Tensor sequence = Tensor(num_patches + 1, d_model);
+    sequence.set_slice(0, 0, class_token);
+    sequence.set_slice(1, 0, patch_emb);
+
+    Tensor current = sequence + position_embeddings;
+
+    for (int i = 0; i < num_layers; i++)
     {
-        sequence = layer.forward(sequence);
-        encoder_output_shape_cache_ = sequence.get_shape(); // 👈 Esto FALTA
+        current = transformer_blocks[i]->forward(current);
     }
 
-    // 3. Extraer la salida del token [CLS] (siempre es el primero de la secuencia)
-    Tensor cls_token_output({1, sequence.get_shape()[1]});
-    cls_token_output_cache_ = cls_token_output;
-    // Lógica para copiar la primera fila de 'sequence' a 'cls_token_output'...
-    // (Esto es una simplificación, tu clase Tensor necesitaría un método para "slice")
+    current = final_ln.forward(current);
 
-    // 4. Normalización y cabeza de clasificación
-    Tensor normalized_output = final_norm_.forward(cls_token_output);
-    normalized_output_cache_ = normalized_output; // Guardar para backward
-    Tensor logits = matmul(normalized_output, classification_head_w_) + classification_head_b_;
+    Tensor class_token_features = current.slice(0, 1, 0, d_model);
 
-    return logits;
+    last_logits = classification_head.forward(class_token_features);
+    return last_logits;
 }
 
-// En src/model/vit.cpp
-void VisionTransformer::backward(const Tensor &grad_loss)
+void VisionTransformer::backward(int true_label)
 {
-    std::cout << "[ViT::backward] grad_loss shape: ";
-    grad_loss.print("grad_loss");
 
-    std::cout << "[ViT::backward] normalized_output_cache_ shape: ";
-    normalized_output_cache_.print("normalized_output_cache_");
+    Tensor grad_logits = Activation::softmax(this->last_logits);
+    grad_logits(0, true_label) -= 1.0f;
 
-    std::cout << "[ViT::backward] classification_head_w_ shape: ";
-    classification_head_w_.print("classification_head_w_");
+    Tensor grad_class_token_features = classification_head.backward(grad_logits);
 
-    // 4. Backward a través de la cabeza de clasificación
-    std::cout << "[DEBUG] Shapes justo antes de matmul_backward()" << std::endl;
-    std::cout << "grad_loss: ";
-    grad_loss.print("grad_loss");
-    std::cout << "normalized_output_cache_: ";
-    normalized_output_cache_.print("normalized_output_cache_");
-    std::cout << "classification_head_w_: ";
-    classification_head_w_.print("classification_head_w_");
+    Tensor grad_sequence_after_final_ln(num_patches + 1, d_model);
+    grad_sequence_after_final_ln.zero();
+    grad_sequence_after_final_ln.set_slice(0, 0, grad_class_token_features);
 
-    auto [grad_norm_output, grad_w] = matmul_backward(grad_loss, normalized_output_cache_, classification_head_w_);
+    Tensor grad_before_final_ln = final_ln.backward(grad_sequence_after_final_ln);
 
-    std::cout << "[ViT::backward] <- grad_norm_output shape: ";
-    grad_norm_output.print("grad_norm_output");
-
-    *(classification_head_w_.grad_) = *(classification_head_w_.grad_) + grad_w;
-    *(classification_head_b_.grad_) = *(classification_head_b_.grad_) + sum(grad_loss, 0, true);
-
-    // Backward a través de la normalización final
-    std::cout << "[ViT::backward] -> final_norm.backward..." << std::endl;
-    Tensor grad_cls_token = final_norm_.backward(grad_norm_output);
-    grad_cls_token.print("grad_cls_token");
-
-    // Crear tensor de gradientes completo
-    Tensor grad_sequence_full(encoder_output_shape_cache_);
-    grad_sequence_full.zero_data();
-    std::cout << "[ViT::backward] grad_sequence_full (cero) shape: ";
-    grad_sequence_full.print("grad_sequence_full (vacío)");
-
-    // Insertar gradiente del CLS token
-    std::cout << "[ViT::backward] -> set_row(0, grad_cls_token)..." << std::endl;
-    grad_sequence_full.set_row(0, grad_cls_token);
-
-    // Backward a través de la pila de Encoders
-    for (int i = encoder_layers_.size() - 1; i >= 0; --i)
+    Tensor grad_current_block_input = grad_before_final_ln;
+    for (int i = num_layers - 1; i >= 0; i--)
     {
-        std::cout << "[ViT::backward] -> encoder_layers_[" << i << "].backward..." << std::endl;
-        grad_sequence_full = encoder_layers_[i].backward(grad_sequence_full);
-        grad_sequence_full.print("grad_sequence_full (post encoder " + std::to_string(i) + ")");
+        grad_current_block_input = transformer_blocks[i]->backward(grad_current_block_input);
     }
 
-    std::cout << "[ViT::backward] -> patch_embedding_.backward..." << std::endl;
-    patch_embedding_.backward(grad_sequence_full);
+    Tensor grad_patch_emb_input = grad_current_block_input.slice(1, num_patches + 1, 0, d_model);
+
+    patch_embedding.backward(grad_patch_emb_input);
 }
 
-void VisionTransformer::get_parameters(std::vector<Tensor *> &params)
+float VisionTransformer::compute_loss(const Tensor &logits, int true_label)
 {
-    // Limpiar el vector de parámetros
-    params.clear();
+    Tensor probs = Activation::softmax(logits);
+    return -log(std::max(probs(0, true_label), 1e-8f));
+}
 
-    // 1. Parámetros del Patch Embedding
-    patch_embedding_.get_parameters(params);
-
-    // 2. Parámetros de todas las capas del Encoder
-    for (auto &layer : encoder_layers_)
+void VisionTransformer::update_weights(float lr)
+{
+    patch_embedding.update(lr);
+    classification_head.update(lr);
+    final_ln.update(lr);
+    for (auto &block : transformer_blocks)
     {
-        layer.get_parameters(params);
+        block->update(lr);
     }
-
-    // 3. Parámetros de la Layer Normalization final
-    final_norm_.get_parameters(params);
-
-    // 4. Parámetros del Classification Head
-    params.push_back(&classification_head_w_);
-    params.push_back(&classification_head_b_);
 }
 
 void VisionTransformer::zero_grad()
 {
-    std::vector<Tensor *> all_params;
-    get_parameters(all_params);
-
-    for (Tensor *param : all_params)
+    patch_embedding.zero_grad();
+    classification_head.zero_grad();
+    final_ln.zero_grad();
+    for (auto &block : transformer_blocks)
     {
-        if (param->grad_)
+        block->zero_grad();
+    }
+}
+
+int VisionTransformer::predict(const Tensor &image)
+{
+    Tensor logits = forward(image);
+    int predicted_class = 0;
+    float max_logit = logits(0, 0);
+    for (int i = 1; i < num_classes; i++)
+    {
+        if (logits(0, i) > max_logit)
         {
-            param->grad_->zero_grad();
+            max_logit = logits(0, i);
+            predicted_class = i;
+        }
+    }
+    return predicted_class;
+}
+
+void save_tensor_data(std::ostream &os, const std::string &name, const Tensor &tensor)
+{
+    os << name << " " << tensor.rows << " " << tensor.cols << std::endl;
+    for (int i = 0; i < tensor.rows; ++i)
+    {
+        for (int j = 0; j < tensor.cols; ++j)
+        {
+            os << tensor(i, j) << (j == tensor.cols - 1 ? "" : " ");
+        }
+        os << std::endl;
+    }
+}
+
+void load_tensor_data(std::istream &is, const std::string &expected_name, Tensor &tensor)
+{
+    std::string name;
+    int rows, cols;
+    is >> name >> rows >> cols;
+    if (name != expected_name)
+    {
+        std::cerr << "Error de carga: Nombre de tensor esperado '" << expected_name
+                  << "' pero se encontró '" << name << "'" << std::endl;
+
+        return;
+    }
+
+    tensor = Tensor(rows, cols);
+    for (int i = 0; i < rows; ++i)
+    {
+        for (int j = 0; j < cols; ++j)
+        {
+            is >> tensor(i, j);
         }
     }
 }
 
-void VisionTransformer::get_classification_head_parameters(std::vector<Tensor *> &params)
+void VisionTransformer::save_model(const std::string &filename) const
 {
-    params.clear();
-    params.push_back(&classification_head_w_);
-    params.push_back(&classification_head_b_);
+    std::ofstream ofs(filename);
+    if (!ofs.is_open())
+    {
+        std::cerr << "Error: No se pudo abrir el archivo para guardar el modelo: " << filename << std::endl;
+        return;
+    }
+
+    ofs << "MODEL_CONFIG" << std::endl;
+    ofs << "image_size " << image_size << std::endl;
+    ofs << "patch_size " << patch_size << std::endl;
+    ofs << "d_model " << d_model << std::endl;
+    ofs << "num_layers " << num_layers << std::endl;
+    ofs << "num_classes " << num_classes << std::endl;
+    ofs << "num_patches " << num_patches << std::endl;
+
+    save_tensor_data(ofs, "class_token", class_token);
+    save_tensor_data(ofs, "position_embeddings", position_embeddings);
+
+    save_tensor_data(ofs, "patch_embedding_weights", patch_embedding.weight);
+    save_tensor_data(ofs, "patch_embedding_biases", patch_embedding.bias);
+
+    for (int i = 0; i < num_layers; ++i)
+    {
+        std::string block_prefix = "transformer_block_" + std::to_string(i);
+
+        save_tensor_data(ofs, block_prefix + "_attention_proj_weights", transformer_blocks[i]->attention_proj.weight);
+        save_tensor_data(ofs, block_prefix + "_attention_proj_biases", transformer_blocks[i]->attention_proj.bias);
+
+        save_tensor_data(ofs, block_prefix + "_mlp_fc1_weights", transformer_blocks[i]->mlp.fc1.weight);
+        save_tensor_data(ofs, block_prefix + "_mlp_fc1_biases", transformer_blocks[i]->mlp.fc1.bias);
+        save_tensor_data(ofs, block_prefix + "_mlp_fc2_weights", transformer_blocks[i]->mlp.fc2.weight);
+        save_tensor_data(ofs, block_prefix + "_mlp_fc2_biases", transformer_blocks[i]->mlp.fc2.bias);
+
+        save_tensor_data(ofs, block_prefix + "_mlp_ln_gamma", transformer_blocks[i]->mlp.ln.gamma);
+        save_tensor_data(ofs, block_prefix + "_mlp_ln_beta", transformer_blocks[i]->mlp.ln.beta);
+        save_tensor_data(ofs, block_prefix + "_ln1_gamma", transformer_blocks[i]->ln1.gamma);
+        save_tensor_data(ofs, block_prefix + "_ln1_beta", transformer_blocks[i]->ln1.beta);
+        save_tensor_data(ofs, block_prefix + "_ln2_gamma", transformer_blocks[i]->ln2.gamma);
+        save_tensor_data(ofs, block_prefix + "_ln2_beta", transformer_blocks[i]->ln2.beta);
+    }
+
+    save_tensor_data(ofs, "classification_head_weights", classification_head.weight);
+    save_tensor_data(ofs, "classification_head_biases", classification_head.bias);
+
+    save_tensor_data(ofs, "final_ln_gamma", final_ln.gamma);
+    save_tensor_data(ofs, "final_ln_beta", final_ln.beta);
+
+    ofs.close();
+    std::cout << "Modelo guardado exitosamente en: " << filename << std::endl;
+}
+
+void VisionTransformer::load_model(const std::string &filename)
+{
+    std::ifstream ifs(filename);
+    if (!ifs.is_open())
+    {
+        std::cerr << "Error: No se pudo abrir el archivo para cargar el modelo: " << filename << std::endl;
+        return;
+    }
+
+    std::string tag;
+    ifs >> tag;
+    if (tag != "MODEL_CONFIG")
+    {
+        std::cerr << "Error de carga: Formato de archivo inesperado. Se esperaba 'MODEL_CONFIG'." << std::endl;
+        ifs.close();
+        return;
+    }
+
+    std::string param_name;
+    ifs >> param_name >> image_size;
+    ifs >> param_name >> patch_size;
+    ifs >> param_name >> d_model;
+    ifs >> param_name >> num_layers;
+    ifs >> param_name >> num_classes;
+    ifs >> param_name >> num_patches;
+
+    patch_embedding = Linear(patch_size * patch_size, d_model);
+    class_token = Tensor(1, d_model);
+    position_embeddings = Tensor(num_patches + 1, d_model);
+    classification_head = Linear(d_model, num_classes);
+    final_ln = LayerNorm(d_model);
+
+    transformer_blocks.clear();
+    for (int i = 0; i < num_layers; ++i)
+    {
+        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model));
+    }
+
+    load_tensor_data(ifs, "class_token", class_token);
+    load_tensor_data(ifs, "position_embeddings", position_embeddings);
+
+    load_tensor_data(ifs, "patch_embedding_weights", patch_embedding.weight);
+    load_tensor_data(ifs, "patch_embedding_biases", patch_embedding.bias);
+
+    for (int i = 0; i < num_layers; ++i)
+    {
+        std::string block_prefix = "transformer_block_" + std::to_string(i);
+        load_tensor_data(ifs, block_prefix + "_attention_proj_weights", transformer_blocks[i]->attention_proj.weight);
+        load_tensor_data(ifs, block_prefix + "_attention_proj_biases", transformer_blocks[i]->attention_proj.bias);
+
+        load_tensor_data(ifs, block_prefix + "_mlp_fc1_weights", transformer_blocks[i]->mlp.fc1.weight);
+        load_tensor_data(ifs, block_prefix + "_mlp_fc1_biases", transformer_blocks[i]->mlp.fc1.bias);
+        load_tensor_data(ifs, block_prefix + "_mlp_fc2_weights", transformer_blocks[i]->mlp.fc2.weight);
+        load_tensor_data(ifs, block_prefix + "_mlp_fc2_biases", transformer_blocks[i]->mlp.fc2.bias);
+
+        load_tensor_data(ifs, block_prefix + "_mlp_ln_gamma", transformer_blocks[i]->mlp.ln.gamma);
+        load_tensor_data(ifs, block_prefix + "_mlp_ln_beta", transformer_blocks[i]->mlp.ln.beta);
+        load_tensor_data(ifs, block_prefix + "_ln1_gamma", transformer_blocks[i]->ln1.gamma);
+        load_tensor_data(ifs, block_prefix + "_ln1_beta", transformer_blocks[i]->ln1.beta);
+        load_tensor_data(ifs, block_prefix + "_ln2_gamma", transformer_blocks[i]->ln2.gamma);
+        load_tensor_data(ifs, block_prefix + "_ln2_beta", transformer_blocks[i]->ln2.beta);
+    }
+
+    load_tensor_data(ifs, "classification_head_weights", classification_head.weight);
+    load_tensor_data(ifs, "classification_head_biases", classification_head.bias);
+
+    load_tensor_data(ifs, "final_ln_gamma", final_ln.gamma);
+    load_tensor_data(ifs, "final_ln_beta", final_ln.beta);
+
+    ifs.close();
+    std::cout << "Modelo cargado exitosamente desde: " << filename << std::endl;
 }

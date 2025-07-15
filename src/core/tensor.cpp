@@ -1,286 +1,194 @@
-#include "../../include/core/tensor.hpp"
-#include <iostream>
-#include <numeric>
-#include <stdexcept>
-#include <algorithm>
-#include <cstring>
-#include <iomanip>
+#include "../../include/core/tensor.h"
+#include "../../include/core/random.h"
 
-Tensor::Tensor()
-    : shape_({1}), device_(Device::CPU), data_(nullptr), grad_data_(nullptr), size_(1)
+Tensor::Tensor() : rows(0), cols(0) {}
+
+Tensor::Tensor(int r, int c) : rows(r), cols(c)
 {
-    allocate();
+    data.resize(rows * cols, 0.0f);
 }
 
-Tensor::Tensor(const std::vector<int> &shape)
-    : shape_(shape)
+Tensor::Tensor(const std::vector<std::vector<float>> &d) : rows(d.size()), cols(d[0].size())
 {
-    size_ = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
-    allocate();
-}
-
-Tensor::~Tensor()
-{
-    deallocate();
-}
-
-Tensor::Tensor(Tensor &&other) noexcept
-    : shape_(std::move(other.shape_)), device_(Device::CPU), data_(other.data_), size_(other.size_)
-{
-    other.data_ = nullptr;
-    other.grad_data_ = nullptr;
-    other.size_ = 0;
-}
-
-Tensor &Tensor::operator=(Tensor &&other) noexcept
-{
-    if (this != &other)
+    data.resize(rows * cols);
+    for (int i = 0; i < rows; i++)
     {
-        deallocate();
-        shape_ = std::move(other.shape_);
-        device_ = Device::CPU;
-        data_ = other.data_;
-        grad_data_ = other.grad_data_;
-        size_ = other.size_;
-
-        other.data_ = nullptr;
-        other.size_ = 0;
+        for (int j = 0; j < cols; j++)
+        {
+            data[i * cols + j] = d[i][j];
+        }
     }
-    return *this;
+}
+
+float &Tensor::operator()(int i, int j)
+{
+    return data[i * cols + j];
+}
+
+const float &Tensor::operator()(int i, int j) const
+{
+    return data[i * cols + j];
 }
 
 Tensor Tensor::operator+(const Tensor &other) const
 {
-    const auto &other_shape = other.get_shape();
-    if (this->shape_ == other_shape)
+    assert(rows == other.rows && cols == other.cols);
+    Tensor result(rows, cols);
+    for (int i = 0; i < rows * cols; i++)
     {
-        Tensor result(this->shape_);
-        for (size_t i = 0; i < this->size_; ++i)
-            result.get_data()[i] = this->data_[i] + other.get_data()[i];
-        return result;
+        result.data[i] = data[i] + other.data[i];
     }
-    if (this->shape_.size() == 2 && other_shape.size() == 2 && this->shape_[1] == other_shape[1] && other_shape[0] == 1)
-    {
-        Tensor result(this->shape_);
-        int rows = this->shape_[0], cols = this->shape_[1];
-        for (int i = 0; i < rows; ++i)
-        {
-            for (int j = 0; j < cols; ++j)
-            {
-                result.get_data()[i * cols + j] = this->data_[i * cols + j] + other.get_data()[j];
-            }
-        }
-        return result;
-    }
-    throw std::invalid_argument("Shape mismatch in addition or unsupported broadcasting");
+    return result;
 }
 
 Tensor Tensor::operator-(const Tensor &other) const
 {
-    if (shape_ != other.shape_)
-        throw std::invalid_argument("Shape mismatch in subtraction");
-    Tensor result(shape_);
-    for (size_t i = 0; i < size_; ++i)
-        result.data_[i] = data_[i] - other.data_[i];
+    assert(rows == other.rows && cols == other.cols);
+    Tensor result(rows, cols);
+    for (int i = 0; i < rows * cols; i++)
+    {
+        result.data[i] = data[i] - other.data[i];
+    }
+    return result;
+}
+
+Tensor Tensor::operator*(const Tensor &other) const
+{
+    assert(cols == other.rows);
+    Tensor result(rows, other.cols);
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < other.cols; j++)
+        {
+            float sum = 0.0f;
+            for (int k = 0; k < cols; k++)
+            {
+                sum += (*this)(i, k) * other(k, j);
+            }
+            result(i, j) = sum;
+        }
+    }
     return result;
 }
 
 Tensor Tensor::operator*(float scalar) const
 {
-    Tensor result(shape_);
-    for (size_t i = 0; i < size_; ++i)
-        result.data_[i] = data_[i] * scalar;
+    Tensor result(rows, cols);
+    for (int i = 0; i < rows * cols; i++)
+    {
+        result.data[i] = data[i] * scalar;
+    }
     return result;
 }
-
-Tensor operator*(float scalar, const Tensor &tensor)
-{
-    return tensor * scalar;
-}
-
-// Tensor Tensor::transpose() const
-// {
-//     if (shape_.size() != 2)
-//         throw std::runtime_error("Transpose only supports 2D tensors");
-//     int rows = shape_[0], cols = shape_[1];
-//     Tensor result({cols, rows});
-//     for (int r = 0; r < rows; ++r)
-//         for (int c = 0; c < cols; ++c)
-//             result.data_[c * rows + r] = data_[r * cols + c];
-//     return result;
-// }
 
 Tensor Tensor::transpose() const
 {
-    if (this->get_dims() < 2)
+    Tensor result(cols, rows);
+    for (int i = 0; i < rows; i++)
     {
-        throw std::runtime_error("transpose(): tensor must have >= 2 dimensions, but got " + std::to_string(this->get_dims()));
-    }
-    int rows = shape_[0], cols = shape_[1];
-    Tensor result({cols, rows});
-    for (int r = 0; r < rows; ++r)
-    {
-        for (int c = 0; c < cols; ++c)
+        for (int j = 0; j < cols; j++)
         {
-            result.get_data()[c * rows + r] = this->data_[r * cols + c];
+            result(j, i) = (*this)(i, j);
         }
     }
     return result;
 }
 
-void Tensor::allocate()
+void Tensor::zero()
 {
-    if (size_ == 0)
-        return;
-    data_ = new float[size_];
+    std::fill(data.begin(), data.end(), 0.0f);
 }
 
-void Tensor::deallocate()
+void Tensor::xavier_init()
 {
-    delete[] data_;
-    data_ = nullptr;
-    size_ = 0;
-}
-
-void Tensor::from_vector(const std::vector<float> &host_data)
-{
-    if (host_data.size() != size_)
+    float std = sqrt(2.0f / (rows + cols));
+    for (float &val : data)
     {
-        throw std::invalid_argument("Input vector size does not match tensor size.");
-    }
-    std::copy(host_data.begin(), host_data.end(), data_);
-}
-
-std::vector<float> Tensor::to_vector() const
-{
-    std::vector<float> host_vector(size_);
-    std::copy(data_, data_ + size_, host_vector.begin());
-    return host_vector;
-}
-
-void Tensor::allocate_grad()
-{
-    if (grad_data_)
-        delete[] grad_data_;
-    grad_data_ = new float[size_];
-    zero_grad(); // Inicializa a cero
-}
-
-void Tensor::deallocate_grad()
-{
-    delete[] grad_data_;
-    grad_data_ = nullptr;
-}
-
-void Tensor::zero_grad()
-{
-    if (grad_data_)
-        memset(grad_data_, 0, size_ * sizeof(float));
-}
-
-void Tensor::add_grad(const Tensor &grad_tensor)
-{
-    if (grad_data_ == nullptr)
-        allocate_grad();
-
-    size_t total = size_;
-    for (size_t i = 0; i < total; ++i)
-    {
-        grad_data_[i] += grad_tensor.get_data()[i];
+        val = Random::randn(0.0f, std);
     }
 }
 
-Tensor::Tensor(const Tensor &other)
-    : shape_(other.shape_), size_(other.size_)
+void Tensor::he_init()
 {
-    allocate();
-    std::copy(other.data_, other.data_ + size_, data_);
-    if (other.grad_)
+    float std = sqrt(2.0f / rows);
+    for (float &val : data)
     {
-        grad_ = std::make_shared<Tensor>(*other.grad_);
+        val = Random::randn(0.0f, std);
     }
 }
 
-Tensor &Tensor::operator=(const Tensor &other)
+Tensor Tensor::eye(int n)
 {
-    if (this != &other)
+    Tensor result(n, n);
+    for (int i = 0; i < n; i++)
     {
-        deallocate();
-        shape_ = other.shape_;
-        size_ = other.size_;
-        allocate();
-        std::copy(other.data_, other.data_ + size_, data_);
-        if (other.grad_)
+        result(i, i) = 1.0f;
+    }
+    return result;
+}
+
+void Tensor::print() const
+{
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
         {
-            grad_ = std::make_shared<Tensor>(*other.grad_);
+            std::cout << (*this)(i, j) << " ";
         }
-        else
+        std::cout << std::endl;
+    }
+}
+
+Tensor Tensor::slice(int start_row, int end_row, int start_col, int end_col) const
+{
+    Tensor result(end_row - start_row, end_col - start_col);
+    for (int i = start_row; i < end_row; i++)
+    {
+        for (int j = start_col; j < end_col; j++)
         {
-            grad_ = nullptr;
+            result(i - start_row, j - start_col) = (*this)(i, j);
         }
     }
-    return *this;
+    return result;
 }
 
-void Tensor::init_grad()
+void Tensor::set_slice(int start_row, int start_col, const Tensor &src)
 {
-    if (!grad_)
+    for (int i = 0; i < src.rows; i++)
     {
-        grad_ = std::make_shared<Tensor>(shape_);
-    }
-    grad_->zero_grad(); // Asegura que el gradiente del gradiente también esté limpio si fuera necesario
-}
-
-void Tensor::print(const std::string &title) const
-{
-    auto vec = to_vector();
-    std::cout << title << " (Shape: [";
-    for (size_t i = 0; i < shape_.size(); ++i)
-    {
-        std::cout << shape_[i] << (i == shape_.size() - 1 ? "" : ", ");
-    }
-    std::cout << "])\n";
-
-    int rows = (get_dims() > 1) ? shape_[0] : 1;
-    int cols = (get_dims() > 0) ? shape_.back() : 0;
-    for (int r = 0; r < std::min(rows, 4); ++r)
-    {
-        for (int c = 0; c < std::min(cols, 8); ++c)
+        for (int j = 0; j < src.cols; j++)
         {
-            std::cout << std::fixed << std::setprecision(4) << vec[r * cols + c] << "\t";
+            (*this)(start_row + i, start_col + j) = src(i, j);
         }
-        std::cout << (cols > 8 ? "...\n" : "\n");
     }
-    if (rows > 4)
-        std::cout << "...\n";
 }
 
-void Tensor::zero_data()
+Tensor Tensor::hadamard(const Tensor &other) const
 {
-    if (data_)
-        memset(data_, 0, size_ * sizeof(float));
+    assert(rows == other.rows && cols == other.cols);
+    Tensor result(rows, cols);
+    for (int i = 0; i < rows * cols; i++)
+    {
+        result.data[i] = data[i] * other.data[i];
+    }
+    return result;
 }
 
-Tensor Tensor::get_row(int row_index) const
+Tensor Tensor::row_normalize() const
 {
-    if (this->get_dims() != 2)
-        throw std::runtime_error("get_row solo funciona en tensores 2D");
-    int cols = this->get_shape()[1];
-    Tensor row({1, cols});
-    const float *start_ptr = this->data_ + row_index * cols;
-    std::copy(start_ptr, start_ptr + cols, row.get_data());
-    return row;
-}
-
-void Tensor::set_row(int row_index, const Tensor &row_tensor)
-{
-    if (this->get_dims() != 2 || row_tensor.get_dims() != 2)
-        throw std::runtime_error("set_row solo funciona en tensores 2D");
-    int this_cols = this->get_shape()[1];
-    int row_cols = row_tensor.get_shape()[1];
-    if (this_cols != row_cols || row_tensor.get_shape()[0] != 1)
-        throw std::runtime_error("Las formas para set_row no coinciden");
-
-    float *start_ptr = this->data_ + row_index * this_cols;
-    std::copy(row_tensor.get_data(), row_tensor.get_data() + row_cols, start_ptr);
+    Tensor result(rows, cols);
+    for (int i = 0; i < rows; i++)
+    {
+        float sum = 0.0f;
+        for (int j = 0; j < cols; j++)
+        {
+            sum += (*this)(i, j) * (*this)(i, j);
+        }
+        float norm = sqrt(sum + 1e-8f);
+        for (int j = 0; j < cols; j++)
+        {
+            result(i, j) = (*this)(i, j) / norm;
+        }
+    }
+    return result;
 }
