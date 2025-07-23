@@ -81,6 +81,13 @@ Tensor VisionTransformer::forward(const Tensor &image)
     Tensor class_token_features = current.slice(0, 1, 0, d_model);
 
     last_logits = classification_head.forward(class_token_features);
+
+    std::cout << "\nDebug Forward Pass:\n";
+    std::cout << "Logits finales: ";
+    for (int i = 0; i < num_classes; ++i) 
+        std::cout << last_logits(0,i) << " ";
+    std::cout << std::endl;
+    
     return last_logits;
 }
 

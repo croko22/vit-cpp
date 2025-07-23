@@ -93,15 +93,17 @@ void printProgressBar(int current, int total, int barWidth = 50)
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc < 3 || argc > 4)
     {
         cerr << "❌ Error: Uso incorrecto." << endl;
-        cerr << "   Ejemplo: " << argv[0] << " <ruta_entrenamiento.csv> <ruta_prueba.csv>" << endl;
+        cerr << "   Entrenamiento nuevo: " << argv[0] << " <train.csv> <test.csv>" << endl;
+        cerr << "   Continuar entrenamiento: " << argv[0] << " <train.csv> <test.csv> <modelo.bin>" << endl;
         return 1;
     }
 
     string train_filepath = argv[1];
     string test_filepath = argv[2];
+    string pretrained_model_path = (argc == 4) ? argv[3] : "";
 
     cout << "Vision Transformer con Entrenamiento por Batch" << endl;
     cout << "==============================================" << endl;
@@ -113,7 +115,10 @@ int main(int argc, char *argv[])
     int d_model = 64;
     int num_layers = 2;
     int num_classes = 10;
-    float learning_rate = 3e-4f;
+    float initial_learning_rate = 3e-4f;
+    float learning_rate = pretrained_model_path.empty() ? 
+                         initial_learning_rate : 
+                         initial_learning_rate * 0.1f; //Fine-tuning
     int epochs = 10;
     int batch_size = 128;
     float val_split_ratio = 0.1f; // 10% of training data for validation
@@ -149,6 +154,44 @@ int main(int argc, char *argv[])
     // --- Model Initialization ---
     VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes);
 
+    if (!pretrained_model_path.empty())
+    {
+        cout << "Cargando modelo pre-entrenado de: " << pretrained_model_path << endl;
+        try {
+            vit.load_model(pretrained_model_path);
+            cout << "Modelo cargado exitosamente" << endl;
+            
+            // Opcional: Verificar que las dimensiones coincidan
+            if (vit.image_size != image_size || vit.patch_size != patch_size || 
+                vit.d_model != d_model || vit.num_layers != num_layers ||
+                vit.num_classes != num_classes)
+            {
+                cerr << "  Advertencia: Los hiperparámetros no coinciden con el modelo cargado" << endl;
+                cerr << "  Usando los parámetros del modelo cargado:" << endl;
+                cerr << "  - Tamaño de imagen: " << vit.image_size << endl;
+                cerr << "  - Tamaño de patch: " << vit.patch_size << endl;
+                cerr << "  - d_model: " << vit.d_model << endl;
+                cerr << "  - Capas: " << vit.num_layers << endl;
+                cerr << "  - Clases: " << vit.num_classes << endl;
+                
+                // Actualizar nuestras variables para consistencia
+                image_size = vit.image_size;
+                patch_size = vit.patch_size;
+                d_model = vit.d_model;
+                num_layers = vit.num_layers;
+                num_classes = vit.num_classes;
+            }
+        } 
+        catch (const std::exception& e) {
+            cerr << "Error al cargar el modelo: " << e.what() << endl;
+            cerr << "Inicializando nuevo modelo..." << endl;
+        }
+    }
+    else
+    {
+        cout << "Inicializando nuevo modelo con pesos aleatorios" << endl;
+    }
+
     cout << "\nConfiguración:" << endl;
     cout << "- Imagen: " << image_size << "x" << image_size << endl;
     cout << "- Patch: " << patch_size << "x" << patch_size << endl;
@@ -157,6 +200,10 @@ int main(int argc, char *argv[])
     cout << "- Capas Transformer: " << num_layers << endl;
     cout << "- Clases: " << num_classes << endl;
     cout << "- Learning rate: " << learning_rate << endl;
+    if (!pretrained_model_path.empty())
+    {
+        cout << "  (Learning rate reducido para fine-tuning)" << endl;
+    }
     cout << "- Épocas: " << epochs << endl;
     cout << "- Batch size: " << batch_size << endl;
     cout << "- Muestras de entrenamiento: " << train_images.size() << endl;
@@ -182,11 +229,12 @@ int main(int argc, char *argv[])
         {
             vit.zero_grad();
             size_t batch_end = min(batch_start + batch_size, train_indices.size());
+            Tensor logits;
 
             for (size_t i = batch_start; i < batch_end; ++i)
             {
                 int idx = train_indices[i];
-                Tensor logits = vit.forward(train_images[idx]);
+                logits = vit.forward(train_images[idx]);
                 vit.backward(train_labels[idx]);
                 train_loss += vit.compute_loss(logits, train_labels[idx]);
                 if (vit.predict(train_images[idx]) == train_labels[idx])
@@ -254,7 +302,12 @@ int main(int argc, char *argv[])
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
     auto tm = *std::localtime(&time_t_now);
     std::ostringstream filename;
-    filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
+    
+    if (pretrained_model_path.empty())    
+        filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
+    else
+        filename << "./models/vit_continued_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
+    
     vit.save_model(filename.str());
     cout << "Modelo guardado como: " << filename.str() << endl;
 
