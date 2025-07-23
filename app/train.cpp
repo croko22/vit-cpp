@@ -124,16 +124,17 @@ int main(int argc, char *argv[])
     float val_split_ratio = 0.1f; // 10% of training data for validation
 
     // --- Data Loading ---
+    //TO CHANGE: Parametro de maximas imagenes
     cout << "Cargando datos..." << endl;
-    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath);
-    auto [test_images, test_labels] = DataLoader::load_data(test_filepath);
+    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath,6000);
+    auto [test_images, test_labels] = DataLoader::load_data(test_filepath,1000);
 
     // --- Train/Validation Split ---
     vector<int> indices(all_train_images.size());
     iota(indices.begin(), indices.end(), 0);
     shuffle(indices.begin(), indices.end(), Random::gen);
 
-    int val_size = static_cast<int>(all_train_images.size() * val_split_ratio);
+    size_t val_size = static_cast<size_t>(all_train_images.size() * val_split_ratio);
     vector<Tensor> train_images, val_images;
     vector<int> train_labels, val_labels;
 
@@ -230,11 +231,20 @@ int main(int argc, char *argv[])
             vit.zero_grad();
             size_t batch_end = min(batch_start + batch_size, train_indices.size());
             Tensor logits;
+            // int debug_idx = Random::randint(batch_start, batch_end - 1);
 
             for (size_t i = batch_start; i < batch_end; ++i)
             {
                 int idx = train_indices[i];
                 logits = vit.forward(train_images[idx]);
+
+                // if (i == debug_idx) {  // Solo imprimir una muestra aleatoria
+                //     std::cout << "Logits ejemplo " << idx << ": ";
+                //     for (int j = 0; j < num_classes; ++j) 
+                //         std::cout << logits(0,j) << " ";
+                //     std::cout << std::endl;
+                // }
+
                 vit.backward(train_labels[idx]);
                 train_loss += vit.compute_loss(logits, train_labels[idx]);
                 if (vit.predict(train_images[idx]) == train_labels[idx])

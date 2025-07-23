@@ -6,9 +6,11 @@
 #include <fstream>
 
 VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes)
-    : image_size(img_size), patch_size(patch_sz), d_model(d_mod),
-      num_layers(n_layers), num_classes(n_classes),
-      num_patches((img_size / patch_sz) * (img_size / patch_sz)),
+    : image_size(img_size),
+      patch_size(patch_sz),
+      d_model(d_mod),
+      num_layers(n_layers),
+      num_classes(n_classes),
       patch_embedding(patch_sz * patch_sz, d_mod),
       class_token(1, d_mod),
       position_embeddings(num_patches + 1, d_mod),
@@ -82,11 +84,11 @@ Tensor VisionTransformer::forward(const Tensor &image)
 
     last_logits = classification_head.forward(class_token_features);
 
-    std::cout << "\nDebug Forward Pass:\n";
-    std::cout << "Logits finales: ";
-    for (int i = 0; i < num_classes; ++i) 
-        std::cout << last_logits(0,i) << " ";
-    std::cout << std::endl;
+    // std::cout << "\nDebug Forward Pass:\n";
+    // std::cout << "Logits finales: ";
+    // for (int i = 0; i < num_classes; ++i) 
+    //     std::cout << last_logits(0,i) << " ";
+    // std::cout << std::endl;
     
     return last_logits;
 }

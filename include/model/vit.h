@@ -16,8 +16,8 @@
 class VisionTransformer
 {
 public:
-    int patch_size, d_model, num_layers, num_classes;
     int image_size, num_patches;
+    int patch_size, d_model, num_layers, num_classes;
     Linear patch_embedding;
     Tensor class_token, position_embeddings;
     std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
