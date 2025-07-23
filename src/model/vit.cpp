@@ -11,6 +11,7 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
       d_model(d_mod),
       num_layers(n_layers),
       num_classes(n_classes),
+      num_patches((img_size / patch_sz) * (img_size / patch_sz)),
       patch_embedding(patch_sz * patch_sz, d_mod),
       class_token(1, d_mod),
       position_embeddings(num_patches + 1, d_mod),
@@ -116,6 +117,18 @@ void VisionTransformer::backward(int true_label)
     Tensor grad_patch_emb_input = grad_current_block_input.slice(1, num_patches + 1, 0, d_model);
 
     patch_embedding.backward(grad_patch_emb_input);
+
+    // Descomentar cuando sea necesario verificar gradientes
+
+    // std::cout << "\n--- Gradientes ---\n";
+    // std::cout << "Gradiente logits: " << grad_logits.norm() << std::endl;
+    // std::cout << "Gradiente classification_head: " << classification_head.weight_grad.norm() << std::endl;
+    // std::cout << "Gradiente final_ln: " << final_ln.gamma_grad.norm() << std::endl;
+
+    // for (int i = 0; i < num_layers; ++i) {
+    //     std::cout << "Gradiente bloque " << i << ": " 
+    //               << transformer_blocks[i]->attention_proj.weight_grad.norm() << std::endl;
+    // }
 }
 
 float VisionTransformer::compute_loss(const Tensor &logits, int true_label)

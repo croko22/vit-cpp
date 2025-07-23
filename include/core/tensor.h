@@ -34,6 +34,9 @@ public:
     void set_slice(int start_row, int start_col, const Tensor &src);
     Tensor hadamard(const Tensor &other) const;
     Tensor row_normalize() const;
+    float norm() const;
+    Tensor flatten() const;
+    int argmax() const;
 };
 
 #endif // TENSOR_H

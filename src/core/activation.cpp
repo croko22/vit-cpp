@@ -56,3 +56,10 @@ Tensor Activation::softmax(const Tensor &input)
     }
     return result;
 }
+
+Tensor Activation::softmax_grad(const Tensor& logits, int true_class)
+{
+    Tensor grad = softmax(logits);
+    grad(0, true_class) -= 1.0f;
+    return grad;
+}
