@@ -37,6 +37,7 @@ public:
     void update_weights(float lr);
     void zero_grad();
     int predict(const Tensor &image);
+    int predictWithLogits(const Tensor &logits);
     void load_model(const std::string &filename);
     void save_model(const std::string &filename) const;
 };

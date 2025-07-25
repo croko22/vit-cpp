@@ -35,6 +35,17 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
     {
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model));
     }
+
+    // // --- Debug: Verifica inicializacion de pesos ---
+    // std::cout << "Norma de patch_embedding.weight: " << patch_embedding.weight.norm() << std::endl;
+    // std::cout << "Norma de classification_head.weight: " << classification_head.weight.norm() << std::endl;
+    
+    // std::cout << "patch_embedding.weight shape: (" 
+    //       << patch_embedding.weight.rows << ", " 
+    //       << patch_embedding.weight.cols << ")" << std::endl;
+    // std::cout << "classification_head.weight shape: (" 
+    //         << classification_head.weight.rows << ", " 
+    //         << classification_head.weight.cols << ")" << std::endl;
 }
 
 Tensor VisionTransformer::image_to_patches(const Tensor &image)
@@ -67,6 +78,7 @@ Tensor VisionTransformer::forward(const Tensor &image)
     last_patches = image_to_patches(image);
 
     Tensor patch_emb = patch_embedding.forward(last_patches);
+    std::cout << "\nNorma de patch_emb: " << patch_emb.norm() << std::endl;
 
     Tensor sequence = Tensor(num_patches + 1, d_model);
     sequence.set_slice(0, 0, class_token);
@@ -77,19 +89,22 @@ Tensor VisionTransformer::forward(const Tensor &image)
     for (int i = 0; i < num_layers; i++)
     {
         current = transformer_blocks[i]->forward(current);
+        std::cout << "Norma después del bloque " << i << ": " << current.norm() << std::endl;
     }
 
     current = final_ln.forward(current);
+    std::cout << "Norma antes de final: " << current.norm() << std::endl;
 
     Tensor class_token_features = current.slice(0, 1, 0, d_model);
 
     last_logits = classification_head.forward(class_token_features);
 
-    // std::cout << "\nDebug Forward Pass:\n";
-    // std::cout << "Logits finales: ";
-    // for (int i = 0; i < num_classes; ++i) 
-    //     std::cout << last_logits(0,i) << " ";
-    // std::cout << std::endl;
+    // --- Debug: Forward Pass ---
+    std::cout << "Debug Forward Pass:\n";
+    std::cout << "Logits finales: ";
+    for (int i = 0; i < num_classes; ++i) 
+        std::cout << last_logits(0,i) << " ";
+    std::cout << std::endl;
     
     return last_logits;
 }
@@ -162,6 +177,21 @@ void VisionTransformer::zero_grad()
 int VisionTransformer::predict(const Tensor &image)
 {
     Tensor logits = forward(image);
+    int predicted_class = 0;
+    float max_logit = logits(0, 0);
+    for (int i = 1; i < num_classes; i++)
+    {
+        if (logits(0, i) > max_logit)
+        {
+            max_logit = logits(0, i);
+            predicted_class = i;
+        }
+    }
+    return predicted_class;
+}
+
+int VisionTransformer::predictWithLogits(const Tensor &logits)
+{
     int predicted_class = 0;
     float max_logit = logits(0, 0);
     for (int i = 1; i < num_classes; i++)

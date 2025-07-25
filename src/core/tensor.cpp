@@ -196,7 +196,8 @@ Tensor Tensor::row_normalize() const
 float Tensor::norm() const
 {
     float sum_sq = 0.0f;
-    for (float val : data) {
+    for (float val : data)
+    {
         sum_sq += val * val;
     }
     return sqrt(sum_sq);
@@ -222,4 +223,35 @@ int Tensor::argmax() const
         }
     }
     return max_idx;
+}
+
+Tensor Tensor::reshape(int new_rows, int new_cols) const
+{
+    assert(rows * cols == new_rows * new_cols);
+    Tensor result(new_rows, new_cols);
+    std::copy(data.begin(), data.end(), result.data.begin());
+    return result;
+}
+
+Tensor Tensor::reshape(int dim0, int dim1, int dim2) const
+{
+    assert(rows * cols == dim0 * dim1 * dim2);
+    Tensor flat = reshape(dim0 * dim1, dim2);
+    return flat;
+}
+
+Tensor Tensor::batch_matmul(const Tensor& other) const
+{
+    assert(cols == other.rows);
+    Tensor result(rows, other.cols);
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < other.cols; ++j) {
+            float sum = 0.0f;
+            for (int k = 0; k < cols; ++k) {
+                sum += (*this)(i, k) * other(k, j);
+            }
+            result(i, j) = sum;
+        }
+    }
+    return result;
 }

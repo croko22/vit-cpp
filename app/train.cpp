@@ -107,27 +107,27 @@ int main(int argc, char *argv[])
 
     cout << "Vision Transformer con Entrenamiento por Batch" << endl;
     cout << "==============================================" << endl;
-    Random::seed(42);
+    Random::seed(23);
 
     // --- Hyperparameters ---
     int image_size = 28;
     int patch_size = 4;
     int d_model = 64;
     int num_layers = 2;
-    int num_classes = 10;
+    int num_classes = 5;
     float initial_learning_rate = 3e-4f;
     float learning_rate = pretrained_model_path.empty() ? 
                          initial_learning_rate : 
                          initial_learning_rate * 0.1f; //Fine-tuning
-    int epochs = 10;
+    int epochs = 5;
     int batch_size = 128;
     float val_split_ratio = 0.1f; // 10% of training data for validation
 
     // --- Data Loading ---
     //TO CHANGE: Parametro de maximas imagenes
     cout << "Cargando datos..." << endl;
-    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath,6000,num_classes);
-    auto [test_images, test_labels] = DataLoader::load_data(test_filepath,1000,num_classes);
+    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath,5,num_classes);
+    auto [test_images, test_labels] = DataLoader::load_data(test_filepath,5,num_classes);
 
     // --- Train/Validation Split ---
     vector<int> indices(all_train_images.size());
@@ -212,154 +212,155 @@ int main(int argc, char *argv[])
     cout << "- Muestras de prueba: " << test_images.size() << endl
          << endl;
 
-    // // --- Training Loop ---
-    // cout << "Entrenando..." << endl;
-    // for (int epoch = 0; epoch < epochs; epoch++)
-    // {
-    //     float train_loss = 0.0f;
-    //     int train_correct = 0;
-    //     vector<int> train_indices(train_images.size());
-    //     iota(train_indices.begin(), train_indices.end(), 0);
-    //     shuffle(train_indices.begin(), train_indices.end(), Random::gen);
+    // --- Training Loop ---
+    cout << "Entrenando..." << endl;
+    for (int epoch = 0; epoch < epochs; epoch++)
+    {
+        float train_loss = 0.0f;
+        int train_correct = 0;
+        vector<int> train_indices(train_images.size());
+        iota(train_indices.begin(), train_indices.end(), 0);
+        shuffle(train_indices.begin(), train_indices.end(), Random::gen);
 
-    //     int batch_count = 0;
-    //     int total_batches = ceil((float)train_indices.size() / batch_size);
+        int batch_count = 0;
+        int total_batches = ceil((float)train_indices.size() / batch_size);
 
-    //     cout << "Epoch " << epoch + 1 << "/" << epochs << endl;
-    //     for (size_t batch_start = 0; batch_start < train_indices.size(); batch_start += batch_size)
-    //     {
-    //         vit.zero_grad();
-    //         size_t batch_end = min(batch_start + batch_size, train_indices.size());
-    //         Tensor logits;
-    //         // int debug_idx = Random::randint(batch_start, batch_end - 1);
+        cout << "Epoch " << epoch + 1 << "/" << epochs << endl;
+        for (size_t batch_start = 0; batch_start < train_indices.size(); batch_start += batch_size)
+        {
+            vit.zero_grad();
+            size_t batch_end = min(batch_start + batch_size, train_indices.size());
+            Tensor logits;
+            // int debug_idx = Random::randint(batch_start, batch_end - 1);
 
-    //         for (size_t i = batch_start; i < batch_end; ++i)
-    //         {
-    //             int idx = train_indices[i];
-    //             logits = vit.forward(train_images[idx]);
-                
-    //             if (idx == 2323) {  // Solo imprimir una muestra aleatoria
-    //                 std::cout << "Logits ejemplo " << idx << ": ";
-    //                 for (int j = 0; j < num_classes; ++j) 
-    //                     std::cout << logits(0,j) << " ";
-    //                 std::cout << std::endl;
-    //             }
-
-    //             vit.backward(train_labels[idx]);
-    //             train_loss += vit.compute_loss(logits, train_labels[idx]);
-    //             if (vit.predict(train_images[idx]) == train_labels[idx])
-    //                 train_correct++;
-    //         }
-
-    //         vit.update_weights(learning_rate);
-    //         batch_count++;
-    //         printProgressBar(batch_count, total_batches);
-    //     }
-    //     cout << endl;
-
-    //     // --- Validation Step ---
-    //     float val_loss = 0.0f;
-    //     int val_correct = 0;
-    //     if (!val_images.empty())
-    //     {
-    //         for (size_t i = 0; i < val_images.size(); i++)
-    //         {
-    //             Tensor logits = vit.forward(val_images[i]);
-    //             val_loss += vit.compute_loss(logits, val_labels[i]);
-    //             if (vit.predict(val_images[i]) == val_labels[i])
-    //                 val_correct++;
-    //         }
-    //     }
-
-    //     float avg_train_loss = train_images.empty() ? 0 : train_loss / train_images.size();
-    //     float train_acc = train_images.empty() ? 0 : (float)train_correct / train_images.size();
-    //     float avg_val_loss = val_images.empty() ? 0 : val_loss / val_images.size();
-    //     float val_acc = val_images.empty() ? 0 : (float)val_correct / val_images.size();
-
-    //     cout << "  Entrenamiento - Pérdida: " << fixed << setprecision(4) << avg_train_loss
-    //          << " | Precisión: " << setprecision(2) << train_acc * 100 << "%" << endl;
-    //     cout << "  Validación    - Pérdida: " << fixed << setprecision(4) << avg_val_loss
-    //          << " | Precisión: " << setprecision(2) << val_acc * 100 << "%" << endl
-    //          << endl;
-    // }
-
-    // --- Debug: Modelo Lineal Simple ---
-    Linear simple_model(28 * 28, num_classes);  // MNIST flatten -> 10 clases
-    simple_model.weight.xavier_init();          // Inicialización adecuada
-    simple_model.bias.zero();  // Critical!
-
-    for (int epoch = 0; epoch < 5; ++epoch) {
-        float loss = 0.0f;
-        int correct = 0;
-        
-        for (int i = 0; i < (int)train_images.size(); ++i)
-        {  // Solo 10 iteraciones (1 por muestra)
-            simple_model.zero_grad();
-            
-            // Forward
-            Tensor flattened = train_images[i].flatten();  // 28x28 -> 784
-            Tensor logits = simple_model.forward(flattened);
-            
-            // Loss y accuracy
-            loss += -log(Activation::softmax(logits)(0, train_labels[i]));
-            if (logits.argmax() == train_labels[i]) correct++;
-            
-            // Backward
-            Tensor grad = Activation::softmax_grad(logits, train_labels[i]);
-            simple_model.backward(grad);
-            
-            // Update (LR alto para debug)
-            simple_model.update(0.01f);  // LR grande para ver cambios rápidos
-            
-            // Imprime logits para una muestra (debug)
-            if (i == 0)
+            for (size_t i = batch_start; i < batch_end; ++i)
             {
-                std::cout << "Epoch " << epoch << " - Muestra 0 Logits: ";
-                for (int j = 0; j < num_classes; ++j) std::cout << logits(0, j) << " ";
-                std::cout << std::endl;
+                int idx = train_indices[i];
+                logits = vit.forward(train_images[idx]);
+                
+                if (idx == 23)
+                {
+                    std::cout << "Logits ejemplo " << idx << ": ";
+                    for (int j = 0; j < num_classes; ++j) 
+                        std::cout << logits(0,j) << " ";
+                    std::cout << std::endl;
+                }
+
+                vit.backward(train_labels[idx]);
+                train_loss += vit.compute_loss(logits, train_labels[idx]);
+                if (vit.predictWithLogits(logits) == train_labels[idx])
+                    train_correct++;
+            }
+
+            vit.update_weights(learning_rate);
+            batch_count++;
+            printProgressBar(batch_count, total_batches);
+        }
+        cout << endl;
+
+        // --- Validation Step ---
+        float val_loss = 0.0f;
+        int val_correct = 0;
+        if (!val_images.empty())
+        {
+            for (size_t i = 0; i < val_images.size(); i++)
+            {
+                Tensor logits = vit.forward(val_images[i]);
+                val_loss += vit.compute_loss(logits, val_labels[i]);
+                if (vit.predict(val_images[i]) == val_labels[i])
+                    val_correct++;
             }
         }
-        
-        std::cout << "Epoch " << epoch << " - Loss: " << loss/train_images.size()
-                << " | Accuracy: " << (float)correct/train_images.size() * 100 << "%" << std::endl;
+
+        float avg_train_loss = train_images.empty() ? 0 : train_loss / train_images.size();
+        float train_acc = train_images.empty() ? 0 : (float)train_correct / train_images.size();
+        float avg_val_loss = val_images.empty() ? 0 : val_loss / val_images.size();
+        float val_acc = val_images.empty() ? 0 : (float)val_correct / val_images.size();
+
+        cout << "  Entrenamiento - Pérdida: " << fixed << setprecision(4) << avg_train_loss
+             << " | Precisión: " << setprecision(2) << train_acc * 100 << resetiosflags(ios::fixed) << setprecision(6) << "%" << endl;
+        cout << "  Validación    - Pérdida: " << fixed << setprecision(4) << avg_val_loss
+             << " | Precisión: " << setprecision(2) << val_acc * 100 << resetiosflags(ios::fixed) << setprecision(6) << "%" << endl
+             << endl;
     }
 
-    // Evaluación en test cada época (opcional)
-    // Evaluar cada época
+    // --- Final Evaluation ---
+    cout << "\nEvaluación final en conjunto de prueba:" << endl;
     int test_correct = 0;
     float test_loss = 0.0f;
     for (size_t i = 0; i < test_images.size(); i++)
     {
-        Tensor flattened = test_images[i].flatten();
-        Tensor logits = simple_model.forward(flattened);
-        test_loss += -log(Activation::softmax(logits)(0, test_labels[i]));
-        int predicted = logits.argmax();
-
-        if (predicted == test_labels[i]) test_correct++;
+        Tensor logits = vit.forward(test_images[i]);
+        test_loss += vit.compute_loss(logits, test_labels[i]);
+        int predicted = vit.predict(test_images[i]);
+        if (predicted == test_labels[i])
+            test_correct++;
 
         if (i < 15) // Show a few more examples
         {
-            std::cout << "Muestra " << i << " - Predicción: " << predicted
+            cout << "Muestra " << i << " - Predicción: " << predicted
                  << " | Real: " << test_labels[i]
                  << (predicted == test_labels[i] ? " ✓" : " ✗") << endl;
         }
     }
 
-    // // --- Final Evaluation ---
+    // // --- Debug: Modelo Lineal Simple ---
+    // Linear simple_model(28 * 28, num_classes);
+    // simple_model.weight.xavier_init();
+    // simple_model.bias.zero();
+
+    // for (int epoch = 0; epoch < 10; ++epoch) {
+    //     float loss = 0.0f;
+    //     int correct = 0;
+        
+    //     for (int i = 0; i < (int)train_images.size(); ++i)
+    //     {
+    //         simple_model.zero_grad();
+            
+    //         // Forward
+    //         Tensor flattened = train_images[i].flatten();  // 28x28 -> 784
+    //         Tensor logits = simple_model.forward(flattened);
+            
+    //         // Loss y accuracy
+    //         loss += -log(Activation::softmax(logits)(0, train_labels[i]));
+    //         if (logits.argmax() == train_labels[i]) correct++;
+            
+    //         // Backward
+    //         Tensor grad = Activation::softmax_grad(logits, train_labels[i]);
+    //         simple_model.backward(grad);
+            
+    //         // Update (LR alto para debug)
+    //         simple_model.update(0.01f);
+            
+    //         // Imprime logits para una muestra (debug)
+    //         if (i == 0)
+    //         {
+    //             std::cout << "Epoch " << epoch << " - Muestra 0 Logits: ";
+    //             for (int j = 0; j < num_classes; ++j) std::cout << logits(0, j) << " ";
+    //             std::cout << std::endl;
+    //         }
+    //     }
+        
+    //     std::cout << "Epoch " << epoch << " - Loss: " << loss/train_images.size()
+    //             << " | Accuracy: " << (float)correct/train_images.size() * 100 << "%" << std::endl;
+    // }
+
+    // // --- Debug: Final Evaluation de Modelo Lineal Simple
     // cout << "\nEvaluación final en conjunto de prueba:" << endl;
     // int test_correct = 0;
     // float test_loss = 0.0f;
     // for (size_t i = 0; i < test_images.size(); i++)
     // {
-    //     Tensor logits = vit.forward(test_images[i]);
-    //     test_loss += vit.compute_loss(logits, test_labels[i]);
-    //     int predicted = vit.predict(test_images[i]);
-    //     if (predicted == test_labels[i])
-    //         test_correct++;
+    //     Tensor flattened = test_images[i].flatten();
+    //     Tensor logits = simple_model.forward(flattened);
+    //     test_loss += -log(Activation::softmax(logits)(0, test_labels[i]));
+    //     int predicted = logits.argmax();
 
-    //     if (i < 15) // Show a few more examples
+    //     if (predicted == test_labels[i]) test_correct++;
+
+    //     if (i < 15)
     //     {
-    //         cout << "Muestra " << i << " - Predicción: " << predicted
+    //         std::cout << "Muestra " << i << " - Predicción: " << predicted
     //              << " | Real: " << test_labels[i]
     //              << (predicted == test_labels[i] ? " ✓" : " ✗") << endl;
     //     }
