@@ -1,9 +1,55 @@
 #include "../../include/model/vit.h"
+#include "../../include/model/encoder.h"
 #include "../../include/core/activation.h"
 #include "../../include/core/random.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+// --- Funciones Helper para Guardar/Cargar Tensores N-D ---
+void save_tensor_data(std::ostream &os, const std::string &name, const Tensor &tensor)
+{
+    const auto &shape = tensor.get_shape();
+    os << name << " " << shape.size();
+    for (int dim : shape)
+    {
+        os << " " << dim;
+    }
+    os << std::endl;
+    const auto &data = tensor.get_data();
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        os << data[i] << (i == data.size() - 1 ? "" : " ");
+    }
+    os << std::endl;
+}
+
+void load_tensor_data(std::istream &is, const std::string &expected_name, Tensor &tensor)
+{
+    std::string name;
+    int num_dims;
+    is >> name >> num_dims;
+    if (name != expected_name)
+    {
+        throw std::runtime_error("Error de carga: Se esperaba '" + expected_name + "' pero se encontró '" + name + "'");
+    }
+    std::vector<int> shape(num_dims);
+    for (int i = 0; i < num_dims; ++i)
+    {
+        is >> shape[i];
+    }
+    tensor = Tensor(shape);
+    auto &data = tensor.get_data();
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        is >> data[i];
+    }
+}
+
+// --- Implementación de VisionTransformer ---
 
 VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes)
     : image_size(img_size),
@@ -12,60 +58,39 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
       num_layers(n_layers),
       num_classes(n_classes),
       num_patches((img_size / patch_sz) * (img_size / patch_sz)),
-      patch_embedding(patch_sz * patch_sz, d_mod),
-      class_token(1, d_mod),
-      position_embeddings(num_patches + 1, d_mod),
+      patch_embedding(patch_sz * patch_sz * 1, d_mod), // Asumimos 1 canal de color
+      // CORREGIDO: Usar el nuevo constructor de Tensor
+      class_token({1, d_mod}),
+      position_embeddings({(num_patches + 1), d_mod}),
       classification_head(d_mod, n_classes),
       final_ln(d_mod)
 {
+    // Inicialización de tensores aprendibles
+    Tensor::xavier_init(this->class_token);
+    Tensor::xavier_init(this->position_embeddings);
 
-    for (int i = 0; i < d_model; i++)
-    {
-        class_token(0, i) = Random::randn(0.0f, 0.01f);
-    }
-    for (int i = 0; i < position_embeddings.rows; i++)
-    {
-        for (int j = 0; j < position_embeddings.cols; j++)
-        {
-            position_embeddings(i, j) = Random::randn(0.0f, 0.01f);
-        }
-    }
-
+    // CORREGIDO: Usar el nuevo constructor de TransformerBlock con todos sus parámetros
+    int num_heads = 8;      // Hiperparámetro común
+    int d_ff = d_model * 4; // Dimensión de la capa oculta del MLP
     for (int i = 0; i < num_layers; i++)
     {
-        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model));
+        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, d_ff));
     }
-
-    // // --- Debug: Verifica inicializacion de pesos ---
-    // std::cout << "Norma de patch_embedding.weight: " << patch_embedding.weight.norm() << std::endl;
-    // std::cout << "Norma de classification_head.weight: " << classification_head.weight.norm() << std::endl;
-    
-    // std::cout << "patch_embedding.weight shape: (" 
-    //       << patch_embedding.weight.rows << ", " 
-    //       << patch_embedding.weight.cols << ")" << std::endl;
-    // std::cout << "classification_head.weight shape: (" 
-    //         << classification_head.weight.rows << ", " 
-    //         << classification_head.weight.cols << ")" << std::endl;
 }
 
 Tensor VisionTransformer::image_to_patches(const Tensor &image)
 {
-    Tensor patches(num_patches, patch_size * patch_size);
+    // CORREGIDO: Usar el nuevo constructor de Tensor
+    Tensor patches({num_patches, patch_size * patch_size * 1});
     int patches_per_row = image_size / patch_size;
     int patch_idx = 0;
+
     for (int i = 0; i < patches_per_row; i++)
     {
         for (int j = 0; j < patches_per_row; j++)
         {
-            for (int pi = 0; pi < patch_size; pi++)
-            {
-                for (int pj = 0; pj < patch_size; pj++)
-                {
-                    int img_row = i * patch_size + pi;
-                    int img_col = j * patch_size + pj;
-                    patches(patch_idx, pi * patch_size + pj) = image(img_row, img_col);
-                }
-            }
+            Tensor patch_2d = image.slice(i * patch_size, (i + 1) * patch_size, j * patch_size, (j + 1) * patch_size);
+            patches.set_slice(patch_idx, 0, patch_2d.flatten());
             patch_idx++;
         }
     }
@@ -74,92 +99,76 @@ Tensor VisionTransformer::image_to_patches(const Tensor &image)
 
 Tensor VisionTransformer::forward(const Tensor &image)
 {
-
     last_patches = image_to_patches(image);
-
     Tensor patch_emb = patch_embedding.forward(last_patches);
-    std::cout << "\nNorma de patch_emb: " << patch_emb.norm() << std::endl;
 
-    Tensor sequence = Tensor(num_patches + 1, d_model);
+    // CORREGIDO: Usar el nuevo constructor de Tensor
+    Tensor sequence({num_patches + 1, d_model});
     sequence.set_slice(0, 0, class_token);
     sequence.set_slice(1, 0, patch_emb);
 
     Tensor current = sequence + position_embeddings;
 
-    for (int i = 0; i < num_layers; i++)
+    for (const auto &block : transformer_blocks)
     {
-        current = transformer_blocks[i]->forward(current);
-        std::cout << "Norma después del bloque " << i << ": " << current.norm() << std::endl;
+        current = block->forward(current);
     }
 
     current = final_ln.forward(current);
-    std::cout << "Norma antes de final: " << current.norm() << std::endl;
 
     Tensor class_token_features = current.slice(0, 1, 0, d_model);
-
     last_logits = classification_head.forward(class_token_features);
 
-    // --- Debug: Forward Pass ---
-    std::cout << "Debug Forward Pass:\n";
-    std::cout << "Logits finales: ";
-    for (int i = 0; i < num_classes; ++i) 
-        std::cout << last_logits(0,i) << " ";
-    std::cout << std::endl;
-    
     return last_logits;
 }
 
 void VisionTransformer::backward(int true_label)
 {
+    Tensor grad_output({1, num_classes});
+    Tensor probs = Activation::softmax(last_logits);
+
+    for (int i = 0; i < num_classes; i++)
+    {
+        grad_output(0, i) = probs(0, i);
+    }
+    grad_output(0, true_label) -= 1.0f; // Restar 1 para la clase verdadera
+
+    // Propagar hacia atrás
+    classification_head.backward(grad_output);
 
     Tensor grad_logits = Activation::softmax(this->last_logits);
-    grad_logits(0, true_label) -= 1.0f;
+    grad_logits.get_data()[true_label] -= 1.0f;
 
     Tensor grad_class_token_features = classification_head.backward(grad_logits);
 
-    Tensor grad_sequence_after_final_ln(num_patches + 1, d_model);
-    grad_sequence_after_final_ln.zero();
-    grad_sequence_after_final_ln.set_slice(0, 0, grad_class_token_features);
+    // CORREGIDO: Usar el nuevo constructor de Tensor
+    Tensor grad_full_sequence({num_patches + 1, d_model});
+    grad_full_sequence.set_slice(0, 0, grad_class_token_features);
 
-    Tensor grad_before_final_ln = final_ln.backward(grad_sequence_after_final_ln);
-
-    Tensor grad_current_block_input = grad_before_final_ln;
+    Tensor grad_current = final_ln.backward(grad_full_sequence);
     for (int i = num_layers - 1; i >= 0; i--)
     {
-        grad_current_block_input = transformer_blocks[i]->backward(grad_current_block_input);
+        grad_current = transformer_blocks[i]->backward(grad_current);
     }
 
-    Tensor grad_patch_emb_input = grad_current_block_input.slice(1, num_patches + 1, 0, d_model);
-
-    patch_embedding.backward(grad_patch_emb_input);
-
-    // Descomentar cuando sea necesario verificar gradientes
-
-    // std::cout << "\n--- Gradientes ---\n";
-    // std::cout << "Gradiente logits: " << grad_logits.norm() << std::endl;
-    // std::cout << "Gradiente classification_head: " << classification_head.weight_grad.norm() << std::endl;
-    // std::cout << "Gradiente final_ln: " << final_ln.gamma_grad.norm() << std::endl;
-
-    // for (int i = 0; i < num_layers; ++i) {
-    //     std::cout << "Gradiente bloque " << i << ": " 
-    //               << transformer_blocks[i]->attention_proj.weight_grad.norm() << std::endl;
-    // }
+    Tensor grad_patch_emb = grad_current.slice(1, num_patches + 1, 0, d_model);
+    patch_embedding.backward(grad_patch_emb);
 }
 
 float VisionTransformer::compute_loss(const Tensor &logits, int true_label)
 {
     Tensor probs = Activation::softmax(logits);
-    return -log(std::max(probs(0, true_label), 1e-8f));
+    return -std::log(probs(0, true_label) + 1e-8f); // Agregar epsilon para estabilidad
 }
 
-void VisionTransformer::update_weights(float lr)
+void VisionTransformer::update_weights(float lr, int batch_size)
 {
-    patch_embedding.update(lr);
-    classification_head.update(lr);
-    final_ln.update(lr);
+    patch_embedding.update(lr, batch_size);
+    classification_head.update(lr, batch_size);
+    final_ln.update(lr, batch_size);
     for (auto &block : transformer_blocks)
     {
-        block->update(lr);
+        block->update(lr, batch_size);
     }
 }
 
@@ -177,68 +186,12 @@ void VisionTransformer::zero_grad()
 int VisionTransformer::predict(const Tensor &image)
 {
     Tensor logits = forward(image);
-    int predicted_class = 0;
-    float max_logit = logits(0, 0);
-    for (int i = 1; i < num_classes; i++)
-    {
-        if (logits(0, i) > max_logit)
-        {
-            max_logit = logits(0, i);
-            predicted_class = i;
-        }
-    }
-    return predicted_class;
+    return logits.argmax();
 }
 
 int VisionTransformer::predictWithLogits(const Tensor &logits)
 {
-    int predicted_class = 0;
-    float max_logit = logits(0, 0);
-    for (int i = 1; i < num_classes; i++)
-    {
-        if (logits(0, i) > max_logit)
-        {
-            max_logit = logits(0, i);
-            predicted_class = i;
-        }
-    }
-    return predicted_class;
-}
-
-void save_tensor_data(std::ostream &os, const std::string &name, const Tensor &tensor)
-{
-    os << name << " " << tensor.rows << " " << tensor.cols << std::endl;
-    for (int i = 0; i < tensor.rows; ++i)
-    {
-        for (int j = 0; j < tensor.cols; ++j)
-        {
-            os << tensor(i, j) << (j == tensor.cols - 1 ? "" : " ");
-        }
-        os << std::endl;
-    }
-}
-
-void load_tensor_data(std::istream &is, const std::string &expected_name, Tensor &tensor)
-{
-    std::string name;
-    int rows, cols;
-    is >> name >> rows >> cols;
-    if (name != expected_name)
-    {
-        std::cerr << "Error de carga: Nombre de tensor esperado '" << expected_name
-                  << "' pero se encontró '" << name << "'" << std::endl;
-
-        return;
-    }
-
-    tensor = Tensor(rows, cols);
-    for (int i = 0; i < rows; ++i)
-    {
-        for (int j = 0; j < cols; ++j)
-        {
-            is >> tensor(i, j);
-        }
-    }
+    return logits.argmax();
 }
 
 void VisionTransformer::save_model(const std::string &filename) const
@@ -268,8 +221,14 @@ void VisionTransformer::save_model(const std::string &filename) const
     {
         std::string block_prefix = "transformer_block_" + std::to_string(i);
 
-        save_tensor_data(ofs, block_prefix + "_attention_proj_weights", transformer_blocks[i]->attention_proj.weight);
-        save_tensor_data(ofs, block_prefix + "_attention_proj_biases", transformer_blocks[i]->attention_proj.bias);
+        save_tensor_data(ofs, block_prefix + ".mha.q_proj.weight", transformer_blocks[i]->mha.q_proj.weight);
+        save_tensor_data(ofs, block_prefix + ".mha.q_proj.bias", transformer_blocks[i]->mha.q_proj.bias);
+        save_tensor_data(ofs, block_prefix + ".mha.k_proj.weight", transformer_blocks[i]->mha.k_proj.weight);
+        save_tensor_data(ofs, block_prefix + ".mha.k_proj.bias", transformer_blocks[i]->mha.k_proj.bias);
+        save_tensor_data(ofs, block_prefix + ".mha.v_proj.weight", transformer_blocks[i]->mha.v_proj.weight);
+        save_tensor_data(ofs, block_prefix + ".mha.v_proj.bias", transformer_blocks[i]->mha.v_proj.bias);
+        save_tensor_data(ofs, block_prefix + ".mha.out_proj.weight", transformer_blocks[i]->mha.out_proj.weight);
+        save_tensor_data(ofs, block_prefix + ".mha.out_proj.bias", transformer_blocks[i]->mha.out_proj.bias);
 
         save_tensor_data(ofs, block_prefix + "_mlp_fc1_weights", transformer_blocks[i]->mlp.fc1.weight);
         save_tensor_data(ofs, block_prefix + "_mlp_fc1_biases", transformer_blocks[i]->mlp.fc1.bias);
@@ -321,15 +280,15 @@ void VisionTransformer::load_model(const std::string &filename)
     ifs >> param_name >> num_patches;
 
     patch_embedding = Linear(patch_size * patch_size, d_model);
-    class_token = Tensor(1, d_model);
-    position_embeddings = Tensor(num_patches + 1, d_model);
+    class_token = Tensor({1, d_model});                       // ← Usar vector para shape
+    position_embeddings = Tensor({num_patches + 1, d_model}); // ← Usar vector para shape
     classification_head = Linear(d_model, num_classes);
     final_ln = LayerNorm(d_model);
 
     transformer_blocks.clear();
     for (int i = 0; i < num_layers; ++i)
     {
-        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model));
+        transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, 8, d_model * 4));
     }
 
     load_tensor_data(ifs, "class_token", class_token);
@@ -341,8 +300,14 @@ void VisionTransformer::load_model(const std::string &filename)
     for (int i = 0; i < num_layers; ++i)
     {
         std::string block_prefix = "transformer_block_" + std::to_string(i);
-        load_tensor_data(ifs, block_prefix + "_attention_proj_weights", transformer_blocks[i]->attention_proj.weight);
-        load_tensor_data(ifs, block_prefix + "_attention_proj_biases", transformer_blocks[i]->attention_proj.bias);
+        load_tensor_data(ifs, block_prefix + ".mha.q_proj.weight", transformer_blocks[i]->mha.q_proj.weight);
+        load_tensor_data(ifs, block_prefix + ".mha.q_proj.bias", transformer_blocks[i]->mha.q_proj.bias);
+        load_tensor_data(ifs, block_prefix + ".mha.k_proj.weight", transformer_blocks[i]->mha.k_proj.weight);
+        load_tensor_data(ifs, block_prefix + ".mha.k_proj.bias", transformer_blocks[i]->mha.k_proj.bias);
+        load_tensor_data(ifs, block_prefix + ".mha.v_proj.weight", transformer_blocks[i]->mha.v_proj.weight);
+        load_tensor_data(ifs, block_prefix + ".mha.v_proj.bias", transformer_blocks[i]->mha.v_proj.bias);
+        load_tensor_data(ifs, block_prefix + ".mha.out_proj.weight", transformer_blocks[i]->mha.out_proj.weight);
+        load_tensor_data(ifs, block_prefix + ".mha.out_proj.bias", transformer_blocks[i]->mha.out_proj.bias);
 
         load_tensor_data(ifs, block_prefix + "_mlp_fc1_weights", transformer_blocks[i]->mlp.fc1.weight);
         load_tensor_data(ifs, block_prefix + "_mlp_fc1_biases", transformer_blocks[i]->mlp.fc1.bias);

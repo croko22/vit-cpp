@@ -92,3 +92,6 @@ chmod +x run.sh
   ```bash
   ./run.sh clean
   ```
+
+   g++ examples/test_mha.cpp src/model/multihead_attention.cpp src/core/tensor.cpp src/model/linear.cpp src/core/activ
+ation.cpp src/core/random.cpp && ./a.out

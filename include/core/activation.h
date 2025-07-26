@@ -18,7 +18,7 @@ public:
     static float gelu_derivative(float x);
     static Tensor apply(const Tensor &input, float (*func)(float));
     static Tensor softmax(const Tensor &input);
-    static Tensor softmax_grad(const Tensor& logits, int true_class);
+    static Tensor softmax_grad(const Tensor &softmax_output, const Tensor &grad_output);
 };
 
 #endif // ACTIVATION_H

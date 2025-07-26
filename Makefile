@@ -15,6 +15,7 @@ TRAIN_OBJS = $(BUILD_DIR)/core/activation.o \
 			 $(BUILD_DIR)/core/tensor.o \
 			 $(BUILD_DIR)/model/vit.o \
 			 $(BUILD_DIR)/model/encoder.o \
+			 $(BUILD_DIR)/model/multihead_attention.o \
 			 $(BUILD_DIR)/model/layernorm.o \
 			 $(BUILD_DIR)/model/linear.o \
 			 $(BUILD_DIR)/model/mlp.o

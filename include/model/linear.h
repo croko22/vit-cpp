@@ -14,7 +14,7 @@ public:
     Linear(int in_features, int out_features);
     Tensor forward(const Tensor &input);
     Tensor backward(const Tensor &grad_output);
-    void update(float lr);
+    void update(float lr, int batch_size = 1);
     void zero_grad();
 };
 

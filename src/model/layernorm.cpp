@@ -1,101 +1,155 @@
-#include "../../include/model/layernorm.h"
+#include "../../include/model/layernorm.h" // Ajusta tu ruta
+#include <cmath>
+#include <numeric>
 
-LayerNorm::LayerNorm(int d_mod) : d_model(d_mod), eps(1e-5f),
-                                  gamma(1, d_mod), beta(1, d_mod),
-                                  gamma_grad(1, d_mod), beta_grad(1, d_mod)
+// --- Constructor Corregido ---
+LayerNorm::LayerNorm(int d_mod)
+    : d_model(d_mod),
+      eps(1e-5f),
+      // CORREGIDO: gamma y beta son vectores 1D
+      gamma({d_mod}),
+      beta({d_mod}),
+      gamma_grad({d_mod}),
+      beta_grad({d_mod})
 {
-    for (int i = 0; i < d_model; i++)
-    {
-        gamma(0, i) = 1.0f;
-        beta(0, i) = 0.0f;
-    }
+    // CORREGIDO: Inicialización de los vectores 1D
+    auto &gamma_data = gamma.get_data();
+    auto &beta_data = beta.get_data();
+    std::fill(gamma_data.begin(), gamma_data.end(), 1.0f);
+    std::fill(beta_data.begin(), beta_data.end(), 0.0f);
 }
 
+// --- Forward Pass N-Dimensional ---
 Tensor LayerNorm::forward(const Tensor &input)
 {
     last_input = input;
-    last_mean = Tensor(input.rows, 1);
-    last_var = Tensor(input.rows, 1);
-    Tensor result(input.rows, input.cols);
-    for (int i = 0; i < input.rows; i++)
+    auto shape = input.get_shape();
+    Tensor result(shape);
+
+    int last_dim = shape.back();
+    if (last_dim != d_model)
     {
-        float mean = 0.0f;
-        for (int j = 0; j < input.cols; j++)
-        {
-            mean += input(i, j);
-        }
-        mean /= input.cols;
-        last_mean(i, 0) = mean;
+        throw std::runtime_error("La última dimensión del input no coincide con d_model de LayerNorm.");
+    }
 
-        float var = 0.0f;
-        for (int j = 0; j < input.cols; j++)
-        {
-            float diff = input(i, j) - mean;
-            var += diff * diff;
-        }
-        var /= input.cols;
-        last_var(i, 0) = var;
+    int outer_size = input.get_size() / last_dim;
+    last_mean = Tensor({outer_size});
+    last_var = Tensor({outer_size});
 
-        for (int j = 0; j < input.cols; j++)
+    auto &result_data = result.get_data();
+    const auto &input_data = input.get_data();
+    auto &mean_data = last_mean.get_data();
+    auto &var_data = last_var.get_data();
+    const auto &gamma_data = gamma.get_data();
+    const auto &beta_data = beta.get_data();
+
+    // Itera sobre cada "fila" o "slice" del tensor
+    for (int i = 0; i < outer_size; ++i)
+    {
+        int offset = i * last_dim;
+
+        // 1. Calcula la media
+        float sum = 0.0f;
+        for (int j = 0; j < last_dim; ++j)
         {
-            float normalized = (input(i, j) - mean) / sqrt(var + eps);
-            result(i, j) = gamma(0, j) * normalized + beta(0, j);
+            sum += input_data[offset + j];
+        }
+        float mean = sum / last_dim;
+        mean_data[i] = mean;
+
+        // 2. Calcula la varianza
+        float var_sum = 0.0f;
+        for (int j = 0; j < last_dim; ++j)
+        {
+            float diff = input_data[offset + j] - mean;
+            var_sum += diff * diff;
+        }
+        float var = var_sum / last_dim;
+        var_data[i] = var;
+
+        float inv_std = 1.0f / std::sqrt(var + eps);
+
+        // 3. Normaliza y aplica gamma y beta
+        for (int j = 0; j < last_dim; ++j)
+        {
+            float normalized = (input_data[offset + j] - mean) * inv_std;
+            result_data[offset + j] = gamma_data[j] * normalized + beta_data[j];
         }
     }
     return result;
 }
 
-Tensor LayerNorm::backward(const Tensor& grad_output)
+// --- Backward Pass N-Dimensional ---
+Tensor LayerNorm::backward(const Tensor &grad_output)
 {
-    //TO CHANGE: BORRAR O DEJAR COMO ESTABA
-    const Tensor& x = last_input;  // Guardado durante forward()
-    const int m = x.cols;          // Dimensión del modelo (d_model)
-    
-    Tensor grad_input(x.rows, x.cols);
-    grad_input.zero();
+    auto shape = last_input.get_shape();
+    Tensor grad_input(shape);
 
-    for (int i = 0; i < x.rows; ++i) {
-        // 1. Recupera mean/var guardados en forward()
-        float mean = last_mean(i, 0);
-        float var = last_var(i, 0);
-        float std_inv = 1.0f / sqrt(var + eps);
+    int last_dim = d_model;
+    int outer_size = last_input.get_size() / last_dim;
 
-        // 2. Gradiente respecto a gamma y beta (acumula sobre todas las filas)
-        for (int j = 0; j < m; ++j) {
-            float x_hat = (x(i, j) - mean) * std_inv;
-            gamma_grad(0, j) += grad_output(i, j) * x_hat;
-            beta_grad(0, j) += grad_output(i, j);
+    const auto &x_data = last_input.get_data();
+    const auto &grad_out_data = grad_output.get_data();
+    auto &grad_in_data = grad_input.get_data();
+
+    const auto &mean_data = last_mean.get_data();
+    const auto &var_data = last_var.get_data();
+    const auto &gamma_data = gamma.get_data();
+    auto &g_grad_data = gamma_grad.get_data();
+    auto &b_grad_data = beta_grad.get_data();
+
+    for (int i = 0; i < outer_size; ++i)
+    {
+        int offset = i * last_dim;
+        float mean = mean_data[i];
+        float var = var_data[i];
+        float inv_std = 1.0f / std::sqrt(var + eps);
+
+        // 1. Acumula gradientes para gamma y beta (sobre todo el batch/secuencia)
+        for (int j = 0; j < last_dim; ++j)
+        {
+            float x_hat = (x_data[offset + j] - mean) * inv_std;
+            g_grad_data[j] += grad_out_data[offset + j] * x_hat;
+            b_grad_data[j] += grad_out_data[offset + j];
         }
 
-        // 3. Gradiente respecto a la entrada (x)
-        float sum1 = 0.0f, sum2 = 0.0f;
-        for (int j = 0; j < m; ++j) {
-            sum1 += grad_output(i, j) * gamma(0, j);
-            sum2 += grad_output(i, j) * gamma(0, j) * (x(i, j) - mean);
+        // 2. Calcula gradiente para la entrada x
+        float sum1 = 0.0f;
+        float sum2 = 0.0f;
+        for (int j = 0; j < last_dim; ++j)
+        {
+            float grad_x_hat_j = grad_out_data[offset + j] * gamma_data[j];
+            sum1 += grad_x_hat_j;
+            sum2 += grad_x_hat_j * (x_data[offset + j] - mean);
         }
-        
-        for (int j = 0; j < m; ++j) {
-            float dx_hat = grad_output(i, j) * gamma(0, j);
-            float dvar = sum2 * -0.5f * std::pow(var + eps, -1.5f);
-            float dmean = sum1 * (-std_inv) + dvar * (-2.0f / m) * (x(i, j) - mean);
-            grad_input(i, j) = dx_hat * std_inv + dmean / m + dvar * 2.0f * (x(i, j) - mean) / m;
+
+        for (int j = 0; j < last_dim; ++j)
+        {
+            float grad_x_hat_j = grad_out_data[offset + j] * gamma_data[j];
+            grad_in_data[offset + j] = (1.0f / last_dim) * inv_std * (last_dim * grad_x_hat_j - sum1 - (x_data[offset + j] - mean) * inv_std * inv_std * sum2);
         }
     }
 
-    return grad_input;  // ¡Este gradiente debe propagarse hacia atrás!
+    return grad_input;
 }
 
-void LayerNorm::update(float lr)
+// en src/model/layernorm.cpp
+void LayerNorm::update(float lr, int batch_size)
 {
-    // TO CHANGE: Borrar o dejar como estaba
-    // zero_grad();
+    auto &gamma_data = gamma.get_data();
+    auto &beta_data = beta.get_data();
+    const auto &g_grad_data = gamma_grad.get_data();
+    const auto &b_grad_data = beta_grad.get_data();
+
+    // Escala el learning rate por el tamaño del lote para promediar el gradiente
+    float scale = lr / batch_size;
+
     for (int j = 0; j < d_model; ++j)
     {
-        gamma(0, j) -= gamma_grad(0, j) * lr;
-        beta(0, j) -= beta_grad(0, j) * lr;
+        gamma_data[j] -= scale * g_grad_data[j];
+        beta_data[j] -= scale * b_grad_data[j];
     }
 }
-
 void LayerNorm::zero_grad()
 {
     gamma_grad.zero();
