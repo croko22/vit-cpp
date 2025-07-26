@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 
-// --- Funciones Helper para Guardar/Cargar Tensores N-D ---
 void save_tensor_data(std::ostream &os, const std::string &name, const Tensor &tensor)
 {
     const auto &shape = tensor.get_shape();
@@ -49,8 +48,6 @@ void load_tensor_data(std::istream &is, const std::string &expected_name, Tensor
     }
 }
 
-// --- Implementación de VisionTransformer ---
-
 VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes)
     : image_size(img_size),
       patch_size(patch_sz),
@@ -58,29 +55,33 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
       num_layers(n_layers),
       num_classes(n_classes),
       num_patches((img_size / patch_sz) * (img_size / patch_sz)),
-      patch_embedding(patch_sz * patch_sz * 1, d_mod), // Asumimos 1 canal de color
-      // CORREGIDO: Usar el nuevo constructor de Tensor
+      patch_embedding(patch_sz * patch_sz * 1, d_mod),
+
       class_token({1, d_mod}),
       position_embeddings({(num_patches + 1), d_mod}),
+      class_token_grad({1, d_mod}),
+      position_embeddings_grad({(num_patches + 1), d_mod}),
+
       classification_head(d_mod, n_classes),
       final_ln(d_mod)
 {
-    // Inicialización de tensores aprendibles
+
     Tensor::xavier_init(this->class_token);
     Tensor::xavier_init(this->position_embeddings);
 
-    // CORREGIDO: Usar el nuevo constructor de TransformerBlock con todos sus parámetros
-    int num_heads = 8;      // Hiperparámetro común
-    int d_ff = d_model * 4; // Dimensión de la capa oculta del MLP
+    int num_heads = 8;
+    int d_ff = d_model * 4;
     for (int i = 0; i < num_layers; i++)
     {
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, d_ff));
     }
+
+    class_token_grad.zero();
+    position_embeddings_grad.zero();
 }
 
 Tensor VisionTransformer::image_to_patches(const Tensor &image)
 {
-    // CORREGIDO: Usar el nuevo constructor de Tensor
     Tensor patches({num_patches, patch_size * patch_size * 1});
     int patches_per_row = image_size / patch_size;
     int patch_idx = 0;
@@ -102,7 +103,6 @@ Tensor VisionTransformer::forward(const Tensor &image)
     last_patches = image_to_patches(image);
     Tensor patch_emb = patch_embedding.forward(last_patches);
 
-    // CORREGIDO: Usar el nuevo constructor de Tensor
     Tensor sequence({num_patches + 1, d_model});
     sequence.set_slice(0, 0, class_token);
     sequence.set_slice(1, 0, patch_emb);
@@ -122,65 +122,108 @@ Tensor VisionTransformer::forward(const Tensor &image)
     return last_logits;
 }
 
+// En src/model/vit.cpp
+
 void VisionTransformer::backward(int true_label)
 {
-    Tensor grad_output({1, num_classes});
-    Tensor probs = Activation::softmax(last_logits);
+    // 1. Calcular el gradiente inicial de la pérdida (Cross-Entropy con Softmax)
+    Tensor grad_logits = Activation::softmax(last_logits);
+    grad_logits.get_data()[true_label] -= 1.0f; // grad = probabilities - one_hot_label
 
-    for (int i = 0; i < num_classes; i++)
-    {
-        grad_output(0, i) = probs(0, i);
-    }
-    grad_output(0, true_label) -= 1.0f; // Restar 1 para la clase verdadera
-
-    // Propagar hacia atrás
-    classification_head.backward(grad_output);
-
-    Tensor grad_logits = Activation::softmax(this->last_logits);
-    grad_logits.get_data()[true_label] -= 1.0f;
-
+    // 2. Propagar hacia atrás a través de la capa de clasificación
     Tensor grad_class_token_features = classification_head.backward(grad_logits);
 
-    // CORREGIDO: Usar el nuevo constructor de Tensor
-    Tensor grad_full_sequence({num_patches + 1, d_model});
+    // 3. Crear el gradiente para la secuencia completa. Solo el token [CLS] recibe gradiente.
+    Tensor grad_full_sequence({num_patches + 1, d_model}); // Inicializa a ceros
     grad_full_sequence.set_slice(0, 0, grad_class_token_features);
 
+    // 4. Propagar a través de la capa LayerNorm final
     Tensor grad_current = final_ln.backward(grad_full_sequence);
+
+    // 5. Propagar a través de los bloques Transformer
     for (int i = num_layers - 1; i >= 0; i--)
     {
         grad_current = transformer_blocks[i]->backward(grad_current);
     }
+    // 6. AGREGAR: Acumular gradientes para position_embeddings y class_token
+    // Los gradientes se acumulan durante el batch
+    for (size_t i = 0; i < position_embeddings_grad.get_data().size(); ++i)
+    {
+        position_embeddings_grad.get_data()[i] += grad_current.get_data()[i];
+    }
 
+    // Para class_token (solo la primera fila de grad_current)
+    for (size_t i = 0; i < static_cast<size_t>(d_model); ++i)
+    {
+        class_token_grad.get_data()[i] += grad_current.get_data()[i]; // Primera fila
+    }
+
+    // --- CORRECCIÓN ADICIONAL (ver punto 3) ---
+    // El gradiente también debe aplicarse a los embeddings de posición
+    // position_embeddings.grad += grad_current; // (Necesitarías añadir un tensor .grad a tu clase Tensor)
+    // class_token.grad += grad_current.slice(0,1,...);
+    // Por ahora, nos centraremos en los errores principales.
+
+    // 6. Extraer el gradiente para los patch embeddings
     Tensor grad_patch_emb = grad_current.slice(1, num_patches + 1, 0, d_model);
+
+    // 7. Propagar a través del embedding de patches
     patch_embedding.backward(grad_patch_emb);
 }
 
 float VisionTransformer::compute_loss(const Tensor &logits, int true_label)
 {
     Tensor probs = Activation::softmax(logits);
-    return -std::log(probs(0, true_label) + 1e-8f); // Agregar epsilon para estabilidad
+    return -std::log(probs(0, true_label) + 1e-8f);
 }
+
+// Reemplazar la función update_weights existente:
 
 void VisionTransformer::update_weights(float lr, int batch_size)
 {
+    // 1. Actualizar capas con parámetros entrenables
     patch_embedding.update(lr, batch_size);
     classification_head.update(lr, batch_size);
     final_ln.update(lr, batch_size);
+
+    // 2. Actualizar bloques transformer
     for (auto &block : transformer_blocks)
     {
         block->update(lr, batch_size);
+    }
+
+    // 3. AGREGAR: Actualizar class_token y position_embeddings
+    // Usar los gradientes acumulados para actualizar estos parámetros
+
+    // Para class_token: aplicar gradiente acumulado
+    for (size_t i = 0; i < class_token.get_data().size(); ++i)
+    {
+        class_token.get_data()[i] -= lr * class_token_grad.get_data()[i] / batch_size;
+    }
+
+    // Línea 205 - Para position_embeddings: aplicar gradiente acumulado
+    for (size_t i = 0; i < position_embeddings.get_data().size(); ++i)
+    {
+        position_embeddings.get_data()[i] -= lr * position_embeddings_grad.get_data()[i] / batch_size;
     }
 }
 
 void VisionTransformer::zero_grad()
 {
+    // 1. Limpiar gradientes de capas
     patch_embedding.zero_grad();
     classification_head.zero_grad();
     final_ln.zero_grad();
+
+    // 2. Limpiar gradientes de bloques transformer
     for (auto &block : transformer_blocks)
     {
         block->zero_grad();
     }
+
+    // 3. AGREGAR: Limpiar gradientes de embeddings
+    class_token_grad.zero();
+    position_embeddings_grad.zero();
 }
 
 int VisionTransformer::predict(const Tensor &image)
@@ -280,8 +323,8 @@ void VisionTransformer::load_model(const std::string &filename)
     ifs >> param_name >> num_patches;
 
     patch_embedding = Linear(patch_size * patch_size, d_model);
-    class_token = Tensor({1, d_model});                       // ← Usar vector para shape
-    position_embeddings = Tensor({num_patches + 1, d_model}); // ← Usar vector para shape
+    class_token = Tensor({1, d_model});
+    position_embeddings = Tensor({num_patches + 1, d_model});
     classification_head = Linear(d_model, num_classes);
     final_ln = LayerNorm(d_model);
 

@@ -19,6 +19,7 @@ public:
     int num_patches;
     Linear patch_embedding;
     Tensor class_token, position_embeddings;
+    Tensor class_token_grad, position_embeddings_grad;
     std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
     Linear classification_head;
     LayerNorm final_ln;

@@ -41,7 +41,7 @@ public:
 
         string line;
         int samples_loaded = 0;
-        getline(file, line); // Omitir cabecera
+        getline(file, line);
         while (getline(file, line) && (max_samples_to_load == -1 || samples_loaded < max_samples_to_load))
         {
             stringstream ss(line);
@@ -53,8 +53,7 @@ public:
             if (label >= num_classes_to_load)
                 continue;
 
-            // --- ÚNICO CAMBIO: Usar el constructor con la nueva forma ---
-            Tensor image({28, 28}); // En lugar de Tensor(28, 28)
+            Tensor image({28, 28});
 
             auto &image_data = image.get_data();
             for (int i = 0; i < 784; i++)
@@ -73,12 +72,9 @@ public:
     }
 };
 
-// ... (El resto del archivo main no necesita cambios) ...
-// (Lo omito por brevedad, es idéntico a lo que ya tenías)
-void printProgressBar(int count, int total); // Prototipo
-int main(int argc, char *argv[]);            // Prototipo
+void printProgressBar(int count, int total);
+int main(int argc, char *argv[]);
 
-// Implementaciones...
 void printProgressBar(int count, int total)
 {
     int barWidth = 50;
@@ -111,19 +107,18 @@ int main(int argc, char *argv[])
     int image_size = 28;
     int patch_size = 7;
     int d_model = 64;
-    int num_layers = 2;
-    int num_classes = 5;
+    int num_layers = 1;
+    int num_classes = 10;
     float initial_learning_rate = 3e-4f;
-    float learning_rate = pretrained_model_path.empty() ? initial_learning_rate : initial_learning_rate * 0.1f; // Fine-tuning
+    float learning_rate = pretrained_model_path.empty() ? initial_learning_rate : initial_learning_rate * 0.1f;
     int epochs = 50;
     int batch_size = 128;
     float val_split_ratio = 0.1f;
 
     cout << "Cargando datos..." << endl;
-    // auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 500, num_classes);
-    // auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 100, num_classes);
-    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 1000, num_classes); // Era 500
-    auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 500, num_classes);             // Era 100
+
+    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 10000, num_classes);
+    auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 5000, num_classes);
 
     vector<int> indices(all_train_images.size());
     iota(indices.begin(), indices.end(), 0);
@@ -157,7 +152,6 @@ int main(int argc, char *argv[])
             vit.load_model(pretrained_model_path);
             cout << "Modelo cargado exitosamente" << endl;
 
-            // Opcional: Verificar que las dimensiones coincidan
             if (vit.image_size != image_size || vit.patch_size != patch_size ||
                 vit.d_model != d_model || vit.num_layers != num_layers ||
                 vit.num_classes != num_classes)
@@ -170,7 +164,6 @@ int main(int argc, char *argv[])
                 cerr << "  - Capas: " << vit.num_layers << endl;
                 cerr << "  - Clases: " << vit.num_classes << endl;
 
-                // Actualizar nuestras variables para consistencia
                 image_size = vit.image_size;
                 patch_size = vit.patch_size;
                 d_model = vit.d_model;
@@ -227,7 +220,6 @@ int main(int argc, char *argv[])
             vit.zero_grad();
             size_t batch_end = min(batch_start + batch_size, train_indices.size());
             Tensor logits;
-            // int debug_idx = Random::randint(batch_start, batch_end - 1);
 
             for (size_t i = batch_start; i < batch_end; ++i)
             {
@@ -303,68 +295,6 @@ int main(int argc, char *argv[])
                  << (predicted == test_labels[i] ? " ✓" : " ✗") << endl;
         }
     }
-
-    // // --- Debug: Modelo Lineal Simple ---
-    // Linear simple_model(28 * 28, num_classes);
-    // simple_model.weight.xavier_init();
-    // simple_model.bias.zero();
-
-    // for (int epoch = 0; epoch < 10; ++epoch) {
-    //     float loss = 0.0f;
-    //     int correct = 0;
-
-    //     for (int i = 0; i < (int)train_images.size(); ++i)
-    //     {
-    //         simple_model.zero_grad();
-
-    //         // Forward
-    //         Tensor flattened = train_images[i].flatten();  // 28x28 -> 784
-    //         Tensor logits = simple_model.forward(flattened);
-
-    //         // Loss y accuracy
-    //         loss += -log(Activation::softmax(logits)(0, train_labels[i]));
-    //         if (logits.argmax() == train_labels[i]) correct++;
-
-    //         // Backward
-    //         Tensor grad = Activation::softmax_grad(logits, train_labels[i]);
-    //         simple_model.backward(grad);
-
-    //         // Update (LR alto para debug)
-    //         simple_model.update(0.01f);
-
-    //         // Imprime logits para una muestra (debug)
-    //         if (i == 0)
-    //         {
-    //             std::cout << "Epoch " << epoch << " - Muestra 0 Logits: ";
-    //             for (int j = 0; j < num_classes; ++j) std::cout << logits(0, j) << " ";
-    //             std::cout << std::endl;
-    //         }
-    //     }
-
-    //     std::cout << "Epoch " << epoch << " - Loss: " << loss/train_images.size()
-    //             << " | Accuracy: " << (float)correct/train_images.size() * 100 << "%" << std::endl;
-    // }
-
-    // // --- Debug: Final Evaluation de Modelo Lineal Simple
-    // cout << "\nEvaluación final en conjunto de prueba:" << endl;
-    // int test_correct = 0;
-    // float test_loss = 0.0f;
-    // for (size_t i = 0; i < test_images.size(); i++)
-    // {
-    //     Tensor flattened = test_images[i].flatten();
-    //     Tensor logits = simple_model.forward(flattened);
-    //     test_loss += -log(Activation::softmax(logits)(0, test_labels[i]));
-    //     int predicted = logits.argmax();
-
-    //     if (predicted == test_labels[i]) test_correct++;
-
-    //     if (i < 15)
-    //     {
-    //         std::cout << "Muestra " << i << " - Predicción: " << predicted
-    //              << " | Real: " << test_labels[i]
-    //              << (predicted == test_labels[i] ? " ✓" : " ✗") << endl;
-    //     }
-    // }
 
     cout << "\nResultados finales:" << endl;
     cout << "- Pérdida: " << fixed << setprecision(4) << test_loss / test_images.size()
