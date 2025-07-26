@@ -12,7 +12,7 @@
 #include <sstream>
 #include <map>
 #include <chrono>
-// Assuming these are your project's header files
+
 #include "../include/core/random.h"
 #include "../include/core/tensor.h"
 #include "../include/core/activation.h"
@@ -24,7 +24,6 @@
 
 using namespace std;
 
-// DataLoader now handles loading from a single file.
 class DataLoader
 {
 public:
@@ -42,8 +41,6 @@ public:
 
         string line;
         int samples_loaded = 0;
-
-        // Skip header
         getline(file, line);
         while (getline(file, line) && (max_samples_to_load == -1 || samples_loaded < max_samples_to_load))
         {
@@ -73,22 +70,15 @@ public:
     }
 };
 
-void printProgressBar(int current, int total, int barWidth = 50)
+void printProgressBar(int count, int total)
 {
-    float progress = (float)current / total;
-    int pos = (int)(barWidth * progress);
-    cout << "[";
+    int barWidth = 50;
+    float progress = float(count) / total;
+    std::cout << "[";
+    int pos = barWidth * progress;
     for (int i = 0; i < barWidth; ++i)
-    {
-        if (i < pos)
-            cout << "=";
-        else if (i == pos)
-            cout << ">";
-        else
-            cout << " ";
-    }
-    cout << "] " << int(progress * 100.0) << " %\r";
-    cout.flush();
+        std::cout << (i < pos ? "=" : " ");
+    std::cout << "] " << int(progress * 100.0) << "%";
 }
 
 int main(int argc, char *argv[])
@@ -109,7 +99,6 @@ int main(int argc, char *argv[])
     cout << "==============================================" << endl;
     Random::seed(23);
 
-    // --- Hyperparameters ---
     int image_size = 28;
     int patch_size = 4;
     int d_model = 64;
@@ -121,7 +110,7 @@ int main(int argc, char *argv[])
                          initial_learning_rate * 0.1f; //Fine-tuning
     int epochs = 5;
     int batch_size = 128;
-    float val_split_ratio = 0.1f; // 10% of training data for validation
+    float val_split_ratio = 0.1f;
 
     // --- Data Loading ---
     //TO CHANGE: Parametro de maximas imagenes
@@ -129,7 +118,6 @@ int main(int argc, char *argv[])
     auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath,5,num_classes);
     auto [test_images, test_labels] = DataLoader::load_data(test_filepath,5,num_classes);
 
-    // --- Train/Validation Split ---
     vector<int> indices(all_train_images.size());
     iota(indices.begin(), indices.end(), 0);
     shuffle(indices.begin(), indices.end(), Random::gen);
@@ -152,7 +140,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    // --- Model Initialization ---
     VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes);
 
     if (!pretrained_model_path.empty())
@@ -212,7 +199,6 @@ int main(int argc, char *argv[])
     cout << "- Muestras de prueba: " << test_images.size() << endl
          << endl;
 
-    // --- Training Loop ---
     cout << "Entrenando..." << endl;
     for (int epoch = 0; epoch < epochs; epoch++)
     {
@@ -226,6 +212,7 @@ int main(int argc, char *argv[])
         int total_batches = ceil((float)train_indices.size() / batch_size);
 
         cout << "Epoch " << epoch + 1 << "/" << epochs << endl;
+        auto start = std::chrono::high_resolution_clock::now();
         for (size_t batch_start = 0; batch_start < train_indices.size(); batch_start += batch_size)
         {
             vit.zero_grad();
@@ -254,22 +241,23 @@ int main(int argc, char *argv[])
 
             vit.update_weights(learning_rate);
             batch_count++;
+
+            auto now = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> elapsed = now - start;
+
             printProgressBar(batch_count, total_batches);
+            std::cout << " (" << static_cast<int>(std::round(elapsed.count())) << " s)\r" << std::flush;
         }
         cout << endl;
 
-        // --- Validation Step ---
         float val_loss = 0.0f;
         int val_correct = 0;
-        if (!val_images.empty())
+        for (size_t i = 0; i < val_images.size(); i++)
         {
-            for (size_t i = 0; i < val_images.size(); i++)
-            {
-                Tensor logits = vit.forward(val_images[i]);
-                val_loss += vit.compute_loss(logits, val_labels[i]);
-                if (vit.predict(val_images[i]) == val_labels[i])
-                    val_correct++;
-            }
+            Tensor logits = vit.forward(val_images[i]);
+            val_loss += vit.compute_loss(logits, val_labels[i]);
+            if (vit.predict(val_images[i]) == val_labels[i])
+                val_correct++;
         }
 
         float avg_train_loss = train_images.empty() ? 0 : train_loss / train_images.size();
@@ -284,7 +272,6 @@ int main(int argc, char *argv[])
              << endl;
     }
 
-    // --- Final Evaluation ---
     cout << "\nEvaluación final en conjunto de prueba:" << endl;
     int test_correct = 0;
     float test_loss = 0.0f;
@@ -296,7 +283,7 @@ int main(int argc, char *argv[])
         if (predicted == test_labels[i])
             test_correct++;
 
-        if (i < 15) // Show a few more examples
+        if (i < 15)
         {
             cout << "Muestra " << i << " - Predicción: " << predicted
                  << " | Real: " << test_labels[i]
@@ -369,20 +356,13 @@ int main(int argc, char *argv[])
     cout << "\nResultados finales:" << endl;
     cout << "- Pérdida: " << fixed << setprecision(4) << test_loss / test_images.size()
          << " | Precisión: " << setprecision(2) << (float)test_correct / test_images.size() * 100 << "%" << endl;
-
-    // // --- Save Model ---
-    // auto now = std::chrono::system_clock::now();
-    // auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    // auto tm = *std::localtime(&time_t_now);
-    // std::ostringstream filename;
-    
-    // if (pretrained_model_path.empty())    
-    //     filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
-    // else
-    //     filename << "./models/vit_continued_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
-    
-    // vit.save_model(filename.str());
-    // cout << "Modelo guardado como: " << filename.str() << endl;
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    auto tm = *std::localtime(&time_t_now);
+    std::ostringstream filename;
+    filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
+    vit.save_model(filename.str());
+    cout << "Modelo guardado como: " << filename.str() << endl;
 
     return 0;
 }
