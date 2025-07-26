@@ -16,8 +16,8 @@
 class VisionTransformer
 {
 public:
-    int patch_size, d_model, num_layers, num_classes;
-    int image_size, num_patches;
+    int image_size, patch_size, d_model, num_layers, num_classes;
+    int num_patches;
     Linear patch_embedding;
     Tensor class_token, position_embeddings;
     std::vector<std::unique_ptr<TransformerBlock>> transformer_blocks;
@@ -37,6 +37,7 @@ public:
     void update_weights(float lr);
     void zero_grad();
     int predict(const Tensor &image);
+    int predictWithLogits(const Tensor &logits);
     void load_model(const std::string &filename);
     void save_model(const std::string &filename) const;
 };

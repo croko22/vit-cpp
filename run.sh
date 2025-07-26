@@ -8,7 +8,7 @@ show_help() {
     echo "Uso: ./run.sh <comando> [argumentos...]"
     echo ""
     echo "Comandos disponibles:"
-    echo "  train <train.csv> <test.csv>     - Entrenar modelo"
+    echo "  train <train.csv> <test.csv> [modelo.bin] - Entrenar modelo (nuevo o continuar entrenamiento)"
     echo "  infer <modelo.bin> <imagen.csv>  - Hacer inferencia"
     echo "  predict                          - Extraer imagen y predecir"
     echo "  clean                            - Limpiar archivos build"
@@ -30,9 +30,9 @@ shift
 
 case $COMMAND in
     "train")
-        if [ $# -ne 2 ]; then
-            echo "Error: train requiere 2 argumentos"
-            echo "Uso: ./run.sh train <train.csv> <test.csv>"
+        if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+            echo "Error: train requiere 2 o 3 argumentos"
+            echo "Uso: ./run.sh train <train.csv> <test.csv> [modelo.bin]"
             exit 1
         fi
         
@@ -40,8 +40,13 @@ case $COMMAND in
         make train
         
         if [ $? -eq 0 ]; then
-            echo "Ejecutando entrenamiento..."
-            ./${BUILD_DIR}/train.out "$1" "$2"
+            if [ $# -eq 3 ]; then
+                echo "Continuando entrenamiento con modelo pre-entrenado..."
+                ./${BUILD_DIR}/train.out "$1" "$2" "$3"
+            else
+                echo "Iniciando nuevo entrenamiento..."
+                ./${BUILD_DIR}/train.out "$1" "$2"
+            fi
         else
             echo "Error en compilación"
             exit 1
@@ -79,14 +84,20 @@ case $COMMAND in
         echo "Extrayendo imagen aleatoria..."
         python3 scripts/extract_image.py data/mnist/mnist_test.csv
         
-        MODEL=$(ls models/*.bin 2>/dev/null | head -1)
+        MODEL=$(ls models/*.bin 2>/dev/null | sort -r | head -1)
         IMAGE=$(ls data/predict/*_raw.csv 2>/dev/null | head -1)
         
-        if [ -z "$MODEL" ] || [ -z "$IMAGE" ]; then
-            echo "Error: No se encontró modelo o imagen"
+        if [ -z "$MODEL" ]; then
+            echo "Error: No se encontró ningún modelo en el directorio models/"
             exit 1
         fi
         
+        if [ -z "$IMAGE" ]; then
+            echo "Error: No se encontró imagen para predecir"
+            exit 1
+        fi
+        
+        echo "Usando modelo: $MODEL"
         echo "Ejecutando inferencia..."
         ./${BUILD_DIR}/infer.out "$MODEL" "$IMAGE"
         ;;

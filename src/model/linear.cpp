@@ -44,15 +44,26 @@ Tensor Linear::backward(const Tensor &grad_output)
 
 void Linear::update(float lr)
 {
-    float max_grad = 1.0f;
-    for (int i = 0; i < weight.rows * weight.cols; i++)
-    {
-        weight_grad.data[i] = std::max(-max_grad, std::min(max_grad, weight_grad.data[i]));
+    // TO CHANGUE: Borrar y volver al anterior en caso de falla
+    float max_norm = 1.0f;  // Ajusta este valor según necesidad
+    float grad_norm = sqrt(weight_grad.norm() + bias_grad.norm());
+
+    if (grad_norm > max_norm) {
+        float scale = max_norm / grad_norm;
+        // Escala todos los componentes del gradiente
+        for (int i = 0; i < weight_grad.rows * weight_grad.cols; i++) {
+            weight_grad.data[i] *= scale;
+        }
+        for (int i = 0; i < bias_grad.rows; i++) {
+            bias_grad(i, 0) *= scale;
+        }
+    }
+
+    // 2. Actualización estándar
+    for (int i = 0; i < weight.rows * weight.cols; i++) {
         weight.data[i] -= lr * weight_grad.data[i];
     }
-    for (int i = 0; i < bias.rows; i++)
-    {
-        bias_grad(i, 0) = std::max(-max_grad, std::min(max_grad, bias_grad(i, 0)));
+    for (int i = 0; i < bias.rows; i++) {
         bias(i, 0) -= lr * bias_grad(i, 0);
     }
 }
