@@ -15,7 +15,7 @@
 class VisionTransformer
 {
 public:
-    int image_size, patch_size, d_model, num_layers, num_classes;
+    int image_size, patch_size, d_model, num_layers, num_classes, num_heads, d_ff;
     int num_patches;
     Linear patch_embedding;
     Tensor class_token, position_embeddings;
@@ -27,7 +27,7 @@ public:
     Tensor last_patches;
     Tensor last_logits;
 
-    VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes);
+    VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes, int num_heads = 8, int d_ff = 4);
 
     Tensor image_to_patches(const Tensor &image);
     Tensor forward(const Tensor &image);

@@ -109,6 +109,8 @@ int main(int argc, char *argv[])
     int d_model = 64;
     int num_layers = 1;
     int num_classes = 10;
+    int num_heads = 8;
+    int d_ff = 256; // Dimensión de la capa feed-forward en el Transformer
     float initial_learning_rate = 3e-4f;
     float learning_rate = pretrained_model_path.empty() ? initial_learning_rate : initial_learning_rate * 0.1f;
     int epochs = 50;
@@ -142,7 +144,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes);
+    VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes, num_heads, d_ff);
 
     if (!pretrained_model_path.empty())
     {

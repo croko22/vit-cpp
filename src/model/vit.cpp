@@ -48,7 +48,7 @@ void load_tensor_data(std::istream &is, const std::string &expected_name, Tensor
     }
 }
 
-VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes)
+VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int n_layers, int n_classes, int num_heads, int d_ff)
     : image_size(img_size),
       patch_size(patch_sz),
       d_model(d_mod),
@@ -56,6 +56,9 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
       num_classes(n_classes),
       num_patches((img_size / patch_sz) * (img_size / patch_sz)),
       patch_embedding(patch_sz * patch_sz * 1, d_mod),
+
+      num_heads(num_heads),
+      d_ff(d_ff),
 
       class_token({1, d_mod}),
       position_embeddings({(num_patches + 1), d_mod}),
@@ -69,8 +72,6 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
     Tensor::xavier_init(this->class_token);
     Tensor::xavier_init(this->position_embeddings);
 
-    int num_heads = 8;
-    int d_ff = d_model * 4;
     for (int i = 0; i < num_layers; i++)
     {
         transformer_blocks.push_back(std::make_unique<TransformerBlock>(d_model, num_heads, d_ff));
