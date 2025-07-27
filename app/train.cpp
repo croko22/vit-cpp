@@ -13,7 +13,6 @@
 #include <map>
 #include <chrono>
 
-// --- Includes del Proyecto ---
 #include "../include/core/random.h"
 #include "../include/core/tensor.h"
 #include "../include/core/activation.h"
@@ -22,12 +21,11 @@
 #include "../include/model/mlp.h"
 #include "../include/model/encoder.h"
 #include "../include/model/vit.h"
+#include "../include/core/optimizer.h"
+#include "../include/optimizer/adam.h"
 
 using namespace std;
 
-// ==========================================================================================
-// 🚀 NUEVA CLASE: Calculador de Métricas (Precisión, Recall, F1-Score)
-// ==========================================================================================
 class MetricsCalculator
 {
 private:
@@ -64,7 +62,6 @@ public:
         return total_samples == 0 ? 0.0f : static_cast<float>(correct_samples) / total_samples;
     }
 
-    // Calcula el F1-Score promediando los F1-Scores de cada clase (Macro F1)
     float get_macro_f1_score() const
     {
         float f1_sum = 0.0f;
@@ -99,9 +96,6 @@ public:
     }
 };
 
-// ==========================================================================================
-// 🚀 NUEVA CLASE: Logger para guardar resultados en CSV
-// ==========================================================================================
 class CSVLogger
 {
 private:
@@ -116,7 +110,7 @@ public:
         {
             cerr << "Error: No se pudo crear el archivo de log " << filename << endl;
         }
-        // Escribir la cabecera del CSV
+
         file << "epoch,train_loss,train_accuracy,train_f1_score,val_loss,val_accuracy,val_f1_score,learning_rate,duration_sec" << endl;
     }
 
@@ -141,9 +135,6 @@ public:
     }
 };
 
-// ==========================================================================================
-// 📦 Clase para cargar datos (sin cambios)
-// ==========================================================================================
 class DataLoader
 {
 public:
@@ -160,7 +151,7 @@ public:
 
         string line;
         int samples_loaded = 0;
-        getline(file, line); // Omitir cabecera
+        getline(file, line);
         while (getline(file, line) && (max_samples_to_load == -1 || samples_loaded < max_samples_to_load))
         {
             stringstream ss(line);
@@ -189,9 +180,6 @@ public:
     }
 };
 
-// ==========================================================================================
-// 📊 NUEVA FUNCIÓN: Evaluar el modelo en un conjunto de datos
-// ==========================================================================================
 float evaluate_model(VisionTransformer &vit, const vector<Tensor> &images, const vector<int> &labels, MetricsCalculator &metrics)
 {
     metrics.reset();
@@ -211,9 +199,6 @@ float evaluate_model(VisionTransformer &vit, const vector<Tensor> &images, const
     return total_loss / images.size();
 }
 
-// ==========================================================================================
-// ✨ FUNCIÓN PRINCIPAL MEJORADA
-// ==========================================================================================
 void printProgressBar(int count, int total);
 
 int main(int argc, char *argv[])
@@ -234,7 +219,6 @@ int main(int argc, char *argv[])
     cout << "===================================================" << endl;
     Random::seed(23);
 
-    // --- Hiperparámetros ---
     int image_size = 28;
     int patch_size = 7;
     int d_model = 64;
@@ -247,7 +231,6 @@ int main(int argc, char *argv[])
     int batch_size = 128;
     float val_split_ratio = 0.1f;
 
-    // --- Carga de Datos ---
     cout << "Cargando datos..." << endl;
     auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 5000, num_classes);
     auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 1000, num_classes);
@@ -273,11 +256,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    // --- Inicialización del Modelo y Logger ---
     VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes, num_heads, d_ff);
     float learning_rate = initial_learning_rate;
 
-    // Crear nombre de archivo único para el log CSV
+    auto params = vit.get_parameters();
+    std::unique_ptr<Optimizer> optimizer = std::make_unique<Adam>(params, initial_learning_rate);
+
     auto time_now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(time_now);
     auto tm = *std::localtime(&time_t_now);
@@ -290,7 +274,7 @@ int main(int argc, char *argv[])
     {
         cout << "Cargando modelo pre-entrenado de: " << pretrained_model_path << endl;
         vit.load_model(pretrained_model_path);
-        learning_rate *= 0.1f; // Reducir LR para fine-tuning
+        learning_rate *= 0.1f;
     }
     else
     {
@@ -323,7 +307,6 @@ int main(int argc, char *argv[])
     {
         auto epoch_start_time = chrono::high_resolution_clock::now();
 
-        // --- Fase de Entrenamiento ---
         float train_loss = 0.0f;
         MetricsCalculator train_metrics(num_classes);
         vector<int> train_indices(train_images.size());
@@ -335,7 +318,8 @@ int main(int argc, char *argv[])
 
         for (size_t batch_start = 0; batch_start < train_indices.size(); batch_start += batch_size)
         {
-            vit.zero_grad();
+
+            optimizer->zero_grad();
             size_t batch_end = min(batch_start + batch_size, train_indices.size());
 
             for (size_t i = batch_start; i < batch_end; ++i)
@@ -352,7 +336,13 @@ int main(int argc, char *argv[])
             size_t current_batch_size = batch_end - batch_start;
             if (current_batch_size > 0)
             {
-                vit.update_weights(learning_rate, current_batch_size);
+
+                for (auto &p : params)
+                {
+                    *p.grad = *p.grad * (1.0f / current_batch_size);
+                }
+
+                optimizer->step();
             }
 
             printProgressBar(batch_start / batch_size + 1, total_batches);
@@ -362,14 +352,12 @@ int main(int argc, char *argv[])
 
         float avg_train_loss = train_images.empty() ? 0 : train_loss / train_images.size();
 
-        // --- Fase de Validación ---
         MetricsCalculator val_metrics(num_classes);
         float avg_val_loss = evaluate_model(vit, val_images, val_labels, val_metrics);
 
         auto epoch_end_time = chrono::high_resolution_clock::now();
         chrono::duration<double> epoch_duration = epoch_end_time - epoch_start_time;
 
-        // --- Imprimir y Guardar Métricas de la Época ---
         float train_acc = train_metrics.get_accuracy();
         float train_f1 = train_metrics.get_macro_f1_score();
         float val_acc = val_metrics.get_accuracy();
@@ -383,7 +371,6 @@ int main(int argc, char *argv[])
         logger.log_epoch(epoch + 1, avg_train_loss, train_acc, train_f1, avg_val_loss, val_acc, val_f1, learning_rate, epoch_duration.count());
     }
 
-    // --- Evaluación Final en Conjunto de Prueba ---
     cout << "\nEvaluación final en conjunto de prueba:" << endl;
     MetricsCalculator test_metrics(num_classes);
     float avg_test_loss = evaluate_model(vit, test_images, test_labels, test_metrics);
@@ -394,7 +381,6 @@ int main(int argc, char *argv[])
     cout << "Resultados finales:" << endl;
     cout << "- Pérdida: " << avg_test_loss << " | Precisión: " << test_acc * 100 << "% | F1-Score: " << test_f1 << endl;
 
-    // --- Guardar Modelo ---
     std::ostringstream model_filename;
     model_filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
     vit.save_model(model_filename.str());

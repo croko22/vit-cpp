@@ -2,6 +2,7 @@
 #define TRANSFORMER_BLOCK_H
 
 #include "../../include/core/tensor.h"
+#include "../../include/core/optimizer.h"
 #include "multihead_attention.h"
 #include "mlp.h"
 #include "layernorm.h"
@@ -13,8 +14,9 @@ public:
 
     Tensor forward(const Tensor &input);
     Tensor backward(const Tensor &grad_output);
-    void update(float lr, int batch_size = 1);
+    // void update(float lr, int batch_size = 1); // <-- BORRADO
     void zero_grad();
+    std::vector<Parameter> get_parameters();
 
     MultiHeadAttention mha;
     MLP mlp;

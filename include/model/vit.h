@@ -33,7 +33,7 @@ public:
     Tensor forward(const Tensor &image);
     void backward(int true_label);
     float compute_loss(const Tensor &logits, int true_label);
-    void update_weights(float lr, int batch_size = 1);
+    std::vector<Parameter> get_parameters();
     void zero_grad();
     int predict(const Tensor &image);
     int predictWithLogits(const Tensor &logits);

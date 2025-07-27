@@ -29,9 +29,6 @@ El **Vision Transformer (ViT)** divide una imagen en bloques fijos (por ejemplo,
 - [ViT - Keras](https://colab.research.google.com/drive/1OlspI87qJouwFWuTzH2k29ai4XsfYnrT?usp=sharing)
 - [ViT - Pytorch](https://colab.research.google.com/drive/1J_GLR-PMsMiuiRqsPXpJXCT8LMaOfuq1?usp=sharing)
 
-<!-- - [TIA - MARIAN | Transformer_Trainer_Notebook](https://colab.research.google.com/drive/134n_xEv7VfA2_5VniJEgzhNcSh8etRPz#scrollTo=VmYGVziz50tu)
-- [TIA - MARIAN | input_embeddings](https://colab.research.google.com/drive/12Tq-RRQ8HntnFcKtEui3OznjHztWN92q?usp=sharing) -->
-
 ## Cómo compilar y ejecutar
 
 Este proyecto utiliza un `Makefile` para gestionar la compilación de forma eficiente y un script de ayuda (`run.sh`) para simplificar la ejecución de tareas comunes.
@@ -95,3 +92,17 @@ chmod +x run.sh
 
    g++ examples/test_mha.cpp src/model/multihead_attention.cpp src/core/tensor.cpp src/model/linear.cpp src/core/activ
 ation.cpp src/core/random.cpp && ./a.out
+
+# Compilar
+g++ -O2 benchmarks/bench_attention.cpp src/model/multihead_attention.cpp src/core/tensor.cpp src/core/activation.cpp src/model/linear.cpp src/core/random.cpp -Iinclude
+
+# Ejecutar
+./a.out
+
+## Resultados
+
+## Entrenamiento MNIST SGD
+![train](docs/img/train1.png)
+
+### Prediccion mnist
+![infer](docs/img/predict1.png)

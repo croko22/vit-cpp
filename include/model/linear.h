@@ -2,7 +2,8 @@
 #define LINEAR_H
 
 #include "../../include/core/tensor.h"
-#include <algorithm> // For std::max, std::min
+#include "../../include/core/optimizer.h"
+#include <algorithm>
 
 class Linear
 {
@@ -11,11 +12,13 @@ public:
     Tensor weight_grad, bias_grad;
     Tensor last_input;
     bool training;
+
     Linear(int in_features, int out_features);
     Tensor forward(const Tensor &input);
     Tensor backward(const Tensor &grad_output);
-    void update(float lr, int batch_size = 1);
+
     void zero_grad();
+    std::vector<Parameter> get_parameters();
 };
 
-#endif // LINEAR_H
+#endif

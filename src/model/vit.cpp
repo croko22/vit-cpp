@@ -158,32 +158,36 @@ float VisionTransformer::compute_loss(const Tensor &logits, int true_label)
     return -std::log(probs(0, true_label) + 1e-8f);
 }
 
-void VisionTransformer::update_weights(float lr, int batch_size)
+std::vector<Parameter> VisionTransformer::get_parameters()
 {
+    std::vector<Parameter> params;
 
-    patch_embedding.update(lr, batch_size);
-    classification_head.update(lr, batch_size);
-    final_ln.update(lr, batch_size);
+    auto patch_params = patch_embedding.get_parameters();
+    params.insert(params.end(), patch_params.begin(), patch_params.end());
+
+    params.push_back({&class_token, &class_token_grad});
+    params.push_back({&position_embeddings, &position_embeddings_grad});
 
     for (auto &block : transformer_blocks)
     {
-        block->update(lr, batch_size);
+        auto block_params = block->get_parameters();
+        params.insert(params.end(), block_params.begin(), block_params.end());
     }
 
-    for (size_t i = 0; i < class_token.get_data().size(); ++i)
-    {
-        class_token.get_data()[i] -= lr * class_token_grad.get_data()[i] / batch_size;
-    }
+    auto ln_params = final_ln.get_parameters();
+    params.insert(params.end(), ln_params.begin(), ln_params.end());
 
-    for (size_t i = 0; i < position_embeddings.get_data().size(); ++i)
-    {
-        position_embeddings.get_data()[i] -= lr * position_embeddings_grad.get_data()[i] / batch_size;
-    }
+    auto head_params = classification_head.get_parameters();
+    params.insert(params.end(), head_params.begin(), head_params.end());
+
+    return params;
 }
 
 void VisionTransformer::zero_grad()
 {
     patch_embedding.zero_grad();
+    class_token_grad.zero();
+    position_embeddings_grad.zero();
     classification_head.zero_grad();
     final_ln.zero_grad();
 
