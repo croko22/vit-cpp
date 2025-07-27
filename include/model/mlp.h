@@ -20,8 +20,9 @@ public:
     MLP(int d_model, int hidden_dim, float drop_prob = 0.1);
     Tensor forward(const Tensor &input);
     Tensor backward(const Tensor &grad_output);
-    void update(float lr, int batch_size = 1);
+
     void zero_grad();
+    std::vector<Parameter> get_parameters();
 };
 
 #endif

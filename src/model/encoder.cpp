@@ -46,12 +46,18 @@ Tensor TransformerBlock::backward(const Tensor &grad_output)
     return grad_input_direct + grad_input_from_ln1;
 }
 
-void TransformerBlock::update(float lr, int batch_size)
+std::vector<Parameter> TransformerBlock::get_parameters()
 {
-    mha.update(lr, batch_size);
-    mlp.update(lr, batch_size);
-    ln1.update(lr, batch_size);
-    ln2.update(lr, batch_size);
+    auto params = mha.get_parameters();
+    auto mlp_params = mlp.get_parameters();
+    auto ln1_params = ln1.get_parameters();
+    auto ln2_params = ln2.get_parameters();
+
+    params.insert(params.end(), mlp_params.begin(), mlp_params.end());
+    params.insert(params.end(), ln1_params.begin(), ln1_params.end());
+    params.insert(params.end(), ln2_params.begin(), ln2_params.end());
+
+    return params;
 }
 
 void TransformerBlock::zero_grad()

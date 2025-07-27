@@ -80,11 +80,16 @@ Tensor MLP::backward(const Tensor &grad_output)
     return fc1.backward(grad_gelu_input);
 }
 
-void MLP::update(float lr, int batch_size)
+std::vector<Parameter> MLP::get_parameters()
 {
-    fc1.update(lr, batch_size);
-    fc2.update(lr, batch_size);
-    ln.update(lr, batch_size);
+    auto params = fc1.get_parameters();
+    auto fc2_params = fc2.get_parameters();
+    auto ln_params = ln.get_parameters();
+
+    params.insert(params.end(), fc2_params.begin(), fc2_params.end());
+    params.insert(params.end(), ln_params.begin(), ln_params.end());
+
+    return params;
 }
 
 void MLP::zero_grad()
