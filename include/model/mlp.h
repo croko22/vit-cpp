@@ -13,9 +13,11 @@ public:
     LayerNorm ln;
 
     Tensor last_hidden, last_activated;
+    Tensor dropout_mask;
     bool training;
+    float drop_prob;
 
-    MLP(int d_model, int hidden_dim);
+    MLP(int d_model, int hidden_dim, float drop_prob = 0.1);
     Tensor forward(const Tensor &input);
     Tensor backward(const Tensor &grad_output);
     void update(float lr, int batch_size = 1);

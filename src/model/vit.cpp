@@ -54,21 +54,17 @@ VisionTransformer::VisionTransformer(int img_size, int patch_sz, int d_mod, int 
       d_model(d_mod),
       num_layers(n_layers),
       num_classes(n_classes),
-      num_patches((img_size / patch_sz) * (img_size / patch_sz)),
-      patch_embedding(patch_sz * patch_sz * 1, d_mod),
-
       num_heads(num_heads),
       d_ff(d_ff),
-
+      num_patches((img_size / patch_sz) * (img_size / patch_sz)),
+      patch_embedding(patch_sz * patch_sz * 1, d_mod),
       class_token({1, d_mod}),
       position_embeddings({(num_patches + 1), d_mod}),
       class_token_grad({1, d_mod}),
       position_embeddings_grad({(num_patches + 1), d_mod}),
-
       classification_head(d_mod, n_classes),
       final_ln(d_mod)
 {
-
     Tensor::xavier_init(this->class_token);
     Tensor::xavier_init(this->position_embeddings);
 
@@ -123,52 +119,36 @@ Tensor VisionTransformer::forward(const Tensor &image)
     return last_logits;
 }
 
-// En src/model/vit.cpp
-
 void VisionTransformer::backward(int true_label)
 {
-    // 1. Calcular el gradiente inicial de la pérdida (Cross-Entropy con Softmax)
-    Tensor grad_logits = Activation::softmax(last_logits);
-    grad_logits.get_data()[true_label] -= 1.0f; // grad = probabilities - one_hot_label
 
-    // 2. Propagar hacia atrás a través de la capa de clasificación
+    Tensor grad_logits = Activation::softmax(last_logits);
+    grad_logits.get_data()[true_label] -= 1.0f;
+
     Tensor grad_class_token_features = classification_head.backward(grad_logits);
 
-    // 3. Crear el gradiente para la secuencia completa. Solo el token [CLS] recibe gradiente.
-    Tensor grad_full_sequence({num_patches + 1, d_model}); // Inicializa a ceros
+    Tensor grad_full_sequence({num_patches + 1, d_model});
     grad_full_sequence.set_slice(0, 0, grad_class_token_features);
 
-    // 4. Propagar a través de la capa LayerNorm final
     Tensor grad_current = final_ln.backward(grad_full_sequence);
 
-    // 5. Propagar a través de los bloques Transformer
     for (int i = num_layers - 1; i >= 0; i--)
     {
         grad_current = transformer_blocks[i]->backward(grad_current);
     }
-    // 6. AGREGAR: Acumular gradientes para position_embeddings y class_token
-    // Los gradientes se acumulan durante el batch
+
     for (size_t i = 0; i < position_embeddings_grad.get_data().size(); ++i)
     {
         position_embeddings_grad.get_data()[i] += grad_current.get_data()[i];
     }
 
-    // Para class_token (solo la primera fila de grad_current)
     for (size_t i = 0; i < static_cast<size_t>(d_model); ++i)
     {
-        class_token_grad.get_data()[i] += grad_current.get_data()[i]; // Primera fila
+        class_token_grad.get_data()[i] += grad_current.get_data()[i];
     }
 
-    // --- CORRECCIÓN ADICIONAL (ver punto 3) ---
-    // El gradiente también debe aplicarse a los embeddings de posición
-    // position_embeddings.grad += grad_current; // (Necesitarías añadir un tensor .grad a tu clase Tensor)
-    // class_token.grad += grad_current.slice(0,1,...);
-    // Por ahora, nos centraremos en los errores principales.
-
-    // 6. Extraer el gradiente para los patch embeddings
     Tensor grad_patch_emb = grad_current.slice(1, num_patches + 1, 0, d_model);
 
-    // 7. Propagar a través del embedding de patches
     patch_embedding.backward(grad_patch_emb);
 }
 
@@ -178,31 +158,23 @@ float VisionTransformer::compute_loss(const Tensor &logits, int true_label)
     return -std::log(probs(0, true_label) + 1e-8f);
 }
 
-// Reemplazar la función update_weights existente:
-
 void VisionTransformer::update_weights(float lr, int batch_size)
 {
-    // 1. Actualizar capas con parámetros entrenables
+
     patch_embedding.update(lr, batch_size);
     classification_head.update(lr, batch_size);
     final_ln.update(lr, batch_size);
 
-    // 2. Actualizar bloques transformer
     for (auto &block : transformer_blocks)
     {
         block->update(lr, batch_size);
     }
 
-    // 3. AGREGAR: Actualizar class_token y position_embeddings
-    // Usar los gradientes acumulados para actualizar estos parámetros
-
-    // Para class_token: aplicar gradiente acumulado
     for (size_t i = 0; i < class_token.get_data().size(); ++i)
     {
         class_token.get_data()[i] -= lr * class_token_grad.get_data()[i] / batch_size;
     }
 
-    // Línea 205 - Para position_embeddings: aplicar gradiente acumulado
     for (size_t i = 0; i < position_embeddings.get_data().size(); ++i)
     {
         position_embeddings.get_data()[i] -= lr * position_embeddings_grad.get_data()[i] / batch_size;
@@ -211,18 +183,15 @@ void VisionTransformer::update_weights(float lr, int batch_size)
 
 void VisionTransformer::zero_grad()
 {
-    // 1. Limpiar gradientes de capas
     patch_embedding.zero_grad();
     classification_head.zero_grad();
     final_ln.zero_grad();
 
-    // 2. Limpiar gradientes de bloques transformer
     for (auto &block : transformer_blocks)
     {
         block->zero_grad();
     }
 
-    // 3. AGREGAR: Limpiar gradientes de embeddings
     class_token_grad.zero();
     position_embeddings_grad.zero();
 }

@@ -13,6 +13,7 @@
 #include <map>
 #include <chrono>
 
+// --- Includes del Proyecto ---
 #include "../include/core/random.h"
 #include "../include/core/tensor.h"
 #include "../include/core/activation.h"
@@ -24,6 +25,125 @@
 
 using namespace std;
 
+// ==========================================================================================
+// 🚀 NUEVA CLASE: Calculador de Métricas (Precisión, Recall, F1-Score)
+// ==========================================================================================
+class MetricsCalculator
+{
+private:
+    int num_classes;
+    vector<vector<int>> confusion_matrix;
+    long long total_samples = 0;
+    long long correct_samples = 0;
+
+public:
+    MetricsCalculator(int n_classes) : num_classes(n_classes)
+    {
+        reset();
+    }
+
+    void reset()
+    {
+        confusion_matrix.assign(num_classes, vector<int>(num_classes, 0));
+        total_samples = 0;
+        correct_samples = 0;
+    }
+
+    void update(int predicted, int actual)
+    {
+        if (predicted == actual)
+        {
+            correct_samples++;
+        }
+        total_samples++;
+        confusion_matrix[actual][predicted]++;
+    }
+
+    float get_accuracy() const
+    {
+        return total_samples == 0 ? 0.0f : static_cast<float>(correct_samples) / total_samples;
+    }
+
+    // Calcula el F1-Score promediando los F1-Scores de cada clase (Macro F1)
+    float get_macro_f1_score() const
+    {
+        float f1_sum = 0.0f;
+        int class_count = 0;
+
+        for (int i = 0; i < num_classes; ++i)
+        {
+            long long tp = confusion_matrix[i][i];
+            long long fp = 0;
+            for (int j = 0; j < num_classes; ++j)
+            {
+                if (i != j)
+                    fp += confusion_matrix[j][i];
+            }
+            long long fn = 0;
+            for (int j = 0; j < num_classes; ++j)
+            {
+                if (i != j)
+                    fn += confusion_matrix[i][j];
+            }
+
+            float precision = (tp + fp == 0) ? 0 : static_cast<float>(tp) / (tp + fp);
+            float recall = (tp + fn == 0) ? 0 : static_cast<float>(tp) / (tp + fn);
+
+            if (precision + recall > 0)
+            {
+                f1_sum += 2 * (precision * recall) / (precision + recall);
+            }
+            class_count++;
+        }
+        return class_count == 0 ? 0.0f : f1_sum / class_count;
+    }
+};
+
+// ==========================================================================================
+// 🚀 NUEVA CLASE: Logger para guardar resultados en CSV
+// ==========================================================================================
+class CSVLogger
+{
+private:
+    ofstream file;
+    string filename;
+
+public:
+    CSVLogger(const string &fname) : filename(fname)
+    {
+        file.open(filename);
+        if (!file.is_open())
+        {
+            cerr << "Error: No se pudo crear el archivo de log " << filename << endl;
+        }
+        // Escribir la cabecera del CSV
+        file << "epoch,train_loss,train_accuracy,train_f1_score,val_loss,val_accuracy,val_f1_score,learning_rate,duration_sec" << endl;
+    }
+
+    ~CSVLogger()
+    {
+        if (file.is_open())
+        {
+            file.close();
+        }
+    }
+
+    void log_epoch(int epoch, float train_loss, float train_acc, float train_f1,
+                   float val_loss, float val_acc, float val_f1, float lr, double duration)
+    {
+        if (file.is_open())
+        {
+            file << epoch << ","
+                 << train_loss << "," << train_acc << "," << train_f1 << ","
+                 << val_loss << "," << val_acc << "," << val_f1 << ","
+                 << lr << "," << duration << endl;
+        }
+    }
+};
+
+// ==========================================================================================
+// 📦 Clase para cargar datos (sin cambios)
+// ==========================================================================================
 class DataLoader
 {
 public:
@@ -31,7 +151,6 @@ public:
     {
         vector<Tensor> images;
         vector<int> labels;
-
         ifstream file(filename);
         if (!file.is_open())
         {
@@ -41,12 +160,11 @@ public:
 
         string line;
         int samples_loaded = 0;
-        getline(file, line);
+        getline(file, line); // Omitir cabecera
         while (getline(file, line) && (max_samples_to_load == -1 || samples_loaded < max_samples_to_load))
         {
             stringstream ss(line);
             string cell;
-
             if (!getline(ss, cell, ','))
                 continue;
             int label = stoi(cell);
@@ -54,7 +172,6 @@ public:
                 continue;
 
             Tensor image({28, 28});
-
             auto &image_data = image.get_data();
             for (int i = 0; i < 784; i++)
             {
@@ -72,19 +189,32 @@ public:
     }
 };
 
-void printProgressBar(int count, int total);
-int main(int argc, char *argv[]);
-
-void printProgressBar(int count, int total)
+// ==========================================================================================
+// 📊 NUEVA FUNCIÓN: Evaluar el modelo en un conjunto de datos
+// ==========================================================================================
+float evaluate_model(VisionTransformer &vit, const vector<Tensor> &images, const vector<int> &labels, MetricsCalculator &metrics)
 {
-    int barWidth = 50;
-    float progress = float(count) / total;
-    std::cout << "[";
-    int pos = barWidth * progress;
-    for (int i = 0; i < barWidth; ++i)
-        std::cout << (i < pos ? "=" : " ");
-    std::cout << "] " << int(progress * 100.0) << "%";
+    metrics.reset();
+    float total_loss = 0.0f;
+
+    if (images.empty())
+        return 0.0f;
+
+    for (size_t i = 0; i < images.size(); i++)
+    {
+        Tensor logits = vit.forward(images[i]);
+        total_loss += vit.compute_loss(logits, labels[i]);
+        int predicted = vit.predictWithLogits(logits);
+        metrics.update(predicted, labels[i]);
+    }
+
+    return total_loss / images.size();
 }
+
+// ==========================================================================================
+// ✨ FUNCIÓN PRINCIPAL MEJORADA
+// ==========================================================================================
+void printProgressBar(int count, int total);
 
 int main(int argc, char *argv[])
 {
@@ -100,27 +230,27 @@ int main(int argc, char *argv[])
     string test_filepath = argv[2];
     string pretrained_model_path = (argc == 4) ? argv[3] : "";
 
-    cout << "Vision Transformer con Entrenamiento por Batch" << endl;
-    cout << "==============================================" << endl;
+    cout << "Vision Transformer con Métricas Avanzadas y Logging" << endl;
+    cout << "===================================================" << endl;
     Random::seed(23);
 
+    // --- Hiperparámetros ---
     int image_size = 28;
     int patch_size = 7;
     int d_model = 64;
     int num_layers = 1;
     int num_classes = 10;
     int num_heads = 8;
-    int d_ff = 256; // Dimensión de la capa feed-forward en el Transformer
+    int d_ff = 256;
     float initial_learning_rate = 3e-4f;
-    float learning_rate = pretrained_model_path.empty() ? initial_learning_rate : initial_learning_rate * 0.1f;
     int epochs = 50;
     int batch_size = 128;
     float val_split_ratio = 0.1f;
 
+    // --- Carga de Datos ---
     cout << "Cargando datos..." << endl;
-
-    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 10000, num_classes);
-    auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 5000, num_classes);
+    auto [all_train_images, all_train_labels] = DataLoader::load_data(train_filepath, 5000, num_classes);
+    auto [test_images, test_labels] = DataLoader::load_data(test_filepath, 1000, num_classes);
 
     vector<int> indices(all_train_images.size());
     iota(indices.begin(), indices.end(), 0);
@@ -129,7 +259,6 @@ int main(int argc, char *argv[])
     size_t val_size = static_cast<size_t>(all_train_images.size() * val_split_ratio);
     vector<Tensor> train_images, val_images;
     vector<int> train_labels, val_labels;
-
     for (size_t i = 0; i < indices.size(); ++i)
     {
         if (i < val_size)
@@ -144,40 +273,24 @@ int main(int argc, char *argv[])
         }
     }
 
+    // --- Inicialización del Modelo y Logger ---
     VisionTransformer vit(image_size, patch_size, d_model, num_layers, num_classes, num_heads, d_ff);
+    float learning_rate = initial_learning_rate;
+
+    // Crear nombre de archivo único para el log CSV
+    auto time_now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(time_now);
+    auto tm = *std::localtime(&time_t_now);
+    std::ostringstream log_filename_stream;
+    log_filename_stream << "./logs/vit_log_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".csv";
+    CSVLogger logger(log_filename_stream.str());
+    cout << "✅ Archivo de log creado en: " << log_filename_stream.str() << endl;
 
     if (!pretrained_model_path.empty())
     {
         cout << "Cargando modelo pre-entrenado de: " << pretrained_model_path << endl;
-        try
-        {
-            vit.load_model(pretrained_model_path);
-            cout << "Modelo cargado exitosamente" << endl;
-
-            if (vit.image_size != image_size || vit.patch_size != patch_size ||
-                vit.d_model != d_model || vit.num_layers != num_layers ||
-                vit.num_classes != num_classes)
-            {
-                cerr << "  Advertencia: Los hiperparámetros no coinciden con el modelo cargado" << endl;
-                cerr << "  Usando los parámetros del modelo cargado:" << endl;
-                cerr << "  - Tamaño de imagen: " << vit.image_size << endl;
-                cerr << "  - Tamaño de patch: " << vit.patch_size << endl;
-                cerr << "  - d_model: " << vit.d_model << endl;
-                cerr << "  - Capas: " << vit.num_layers << endl;
-                cerr << "  - Clases: " << vit.num_classes << endl;
-
-                image_size = vit.image_size;
-                patch_size = vit.patch_size;
-                d_model = vit.d_model;
-                num_layers = vit.num_layers;
-                num_classes = vit.num_classes;
-            }
-        }
-        catch (const std::exception &e)
-        {
-            cerr << "Error al cargar el modelo: " << e.what() << endl;
-            cerr << "Inicializando nuevo modelo..." << endl;
-        }
+        vit.load_model(pretrained_model_path);
+        learning_rate *= 0.1f; // Reducir LR para fine-tuning
     }
     else
     {
@@ -189,12 +302,14 @@ int main(int argc, char *argv[])
     cout << "- Patch: " << patch_size << "x" << patch_size << endl;
     cout << "- Patches por imagen: " << vit.num_patches << endl;
     cout << "- Dimensión de embedding (d_model): " << d_model << endl;
+    cout << "- Cabezas de atención: " << vit.num_heads << endl;
+    cout << "- Dimensión feed-forward (d_ff): " << d_ff << endl;
     cout << "- Capas Transformer: " << num_layers << endl;
     cout << "- Clases: " << num_classes << endl;
     cout << "- Learning rate: " << learning_rate << endl;
     if (!pretrained_model_path.empty())
     {
-        cout << "  (Learning rate reducido para fine-tuning)" << endl;
+        cout << " (Learning rate reducido para fine-tuning)" << endl;
     }
     cout << "- Épocas: " << epochs << endl;
     cout << "- Batch size: " << batch_size << endl;
@@ -206,40 +321,32 @@ int main(int argc, char *argv[])
     cout << "Entrenando..." << endl;
     for (int epoch = 0; epoch < epochs; epoch++)
     {
+        auto epoch_start_time = chrono::high_resolution_clock::now();
+
+        // --- Fase de Entrenamiento ---
         float train_loss = 0.0f;
-        int train_correct = 0;
+        MetricsCalculator train_metrics(num_classes);
         vector<int> train_indices(train_images.size());
         iota(train_indices.begin(), train_indices.end(), 0);
         shuffle(train_indices.begin(), train_indices.end(), Random::gen);
 
-        int batch_count = 0;
         int total_batches = ceil((float)train_indices.size() / batch_size);
+        cout << "\nEpoch " << epoch + 1 << "/" << epochs << endl;
 
-        cout << "Epoch " << epoch + 1 << "/" << epochs << endl;
-        auto start = std::chrono::high_resolution_clock::now();
         for (size_t batch_start = 0; batch_start < train_indices.size(); batch_start += batch_size)
         {
             vit.zero_grad();
             size_t batch_end = min(batch_start + batch_size, train_indices.size());
-            Tensor logits;
 
             for (size_t i = batch_start; i < batch_end; ++i)
             {
                 int idx = train_indices[i];
-                logits = vit.forward(train_images[idx]);
-
-                if (idx == 23)
-                {
-                    std::cout << "Logits ejemplo " << idx << ": ";
-                    for (int j = 0; j < num_classes; ++j)
-                        std::cout << logits(0, j) << " ";
-                    std::cout << std::endl;
-                }
-
+                Tensor logits = vit.forward(train_images[idx]);
                 vit.backward(train_labels[idx]);
+
                 train_loss += vit.compute_loss(logits, train_labels[idx]);
-                if (vit.predictWithLogits(logits) == train_labels[idx])
-                    train_correct++;
+                int predicted = vit.predictWithLogits(logits);
+                train_metrics.update(predicted, train_labels[idx]);
             }
 
             size_t current_batch_size = batch_end - batch_start;
@@ -247,67 +354,62 @@ int main(int argc, char *argv[])
             {
                 vit.update_weights(learning_rate, current_batch_size);
             }
-            batch_count++;
 
-            auto now = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = now - start;
-
-            printProgressBar(batch_count, total_batches);
-            std::cout << " (" << static_cast<int>(std::round(elapsed.count())) << " s)\r" << std::flush;
+            printProgressBar(batch_start / batch_size + 1, total_batches);
+            cout << "\r" << flush;
         }
         cout << endl;
 
-        float val_loss = 0.0f;
-        int val_correct = 0;
-        for (size_t i = 0; i < val_images.size(); i++)
-        {
-            Tensor logits = vit.forward(val_images[i]);
-            val_loss += vit.compute_loss(logits, val_labels[i]);
-            if (vit.predict(val_images[i]) == val_labels[i])
-                val_correct++;
-        }
-
         float avg_train_loss = train_images.empty() ? 0 : train_loss / train_images.size();
-        float train_acc = train_images.empty() ? 0 : (float)train_correct / train_images.size();
-        float avg_val_loss = val_images.empty() ? 0 : val_loss / val_images.size();
-        float val_acc = val_images.empty() ? 0 : (float)val_correct / val_images.size();
 
-        cout << "  Entrenamiento - Pérdida: " << fixed << setprecision(4) << avg_train_loss
-             << " | Precisión: " << setprecision(2) << train_acc * 100 << resetiosflags(ios::fixed) << setprecision(6) << "%" << endl;
-        cout << "  Validación    - Pérdida: " << fixed << setprecision(4) << avg_val_loss
-             << " | Precisión: " << setprecision(2) << val_acc * 100 << resetiosflags(ios::fixed) << setprecision(6) << "%" << endl
-             << endl;
+        // --- Fase de Validación ---
+        MetricsCalculator val_metrics(num_classes);
+        float avg_val_loss = evaluate_model(vit, val_images, val_labels, val_metrics);
+
+        auto epoch_end_time = chrono::high_resolution_clock::now();
+        chrono::duration<double> epoch_duration = epoch_end_time - epoch_start_time;
+
+        // --- Imprimir y Guardar Métricas de la Época ---
+        float train_acc = train_metrics.get_accuracy();
+        float train_f1 = train_metrics.get_macro_f1_score();
+        float val_acc = val_metrics.get_accuracy();
+        float val_f1 = val_metrics.get_macro_f1_score();
+
+        cout << fixed << setprecision(4);
+        cout << "  Entrenamiento - Pérdida: " << avg_train_loss << " | Precisión: " << train_acc * 100 << "% | F1-Score: " << train_f1 << endl;
+        cout << "  Validación    - Pérdida: " << avg_val_loss << " | Precisión: " << val_acc * 100 << "% | F1-Score: " << val_f1 << endl;
+        cout << "  Duración: " << epoch_duration.count() << " s" << endl;
+
+        logger.log_epoch(epoch + 1, avg_train_loss, train_acc, train_f1, avg_val_loss, val_acc, val_f1, learning_rate, epoch_duration.count());
     }
 
+    // --- Evaluación Final en Conjunto de Prueba ---
     cout << "\nEvaluación final en conjunto de prueba:" << endl;
-    int test_correct = 0;
-    float test_loss = 0.0f;
-    for (size_t i = 0; i < test_images.size(); i++)
-    {
-        Tensor logits = vit.forward(test_images[i]);
-        test_loss += vit.compute_loss(logits, test_labels[i]);
-        int predicted = vit.predict(test_images[i]);
-        if (predicted == test_labels[i])
-            test_correct++;
+    MetricsCalculator test_metrics(num_classes);
+    float avg_test_loss = evaluate_model(vit, test_images, test_labels, test_metrics);
+    float test_acc = test_metrics.get_accuracy();
+    float test_f1 = test_metrics.get_macro_f1_score();
 
-        if (i < 15)
-        {
-            cout << "Muestra " << i << " - Predicción: " << predicted
-                 << " | Real: " << test_labels[i]
-                 << (predicted == test_labels[i] ? " ✓" : " ✗") << endl;
-        }
-    }
+    cout << fixed << setprecision(4);
+    cout << "Resultados finales:" << endl;
+    cout << "- Pérdida: " << avg_test_loss << " | Precisión: " << test_acc * 100 << "% | F1-Score: " << test_f1 << endl;
 
-    cout << "\nResultados finales:" << endl;
-    cout << "- Pérdida: " << fixed << setprecision(4) << test_loss / test_images.size()
-         << " | Precisión: " << setprecision(2) << (float)test_correct / test_images.size() * 100 << "%" << endl;
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto tm = *std::localtime(&time_t_now);
-    std::ostringstream filename;
-    filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
-    vit.save_model(filename.str());
-    cout << "Modelo guardado como: " << filename.str() << endl;
+    // --- Guardar Modelo ---
+    std::ostringstream model_filename;
+    model_filename << "./models/vit_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".bin";
+    vit.save_model(model_filename.str());
+    cout << "Modelo guardado como: " << model_filename.str() << endl;
 
     return 0;
+}
+
+void printProgressBar(int count, int total)
+{
+    int barWidth = 50;
+    float progress = float(count) / total;
+    cout << "[";
+    int pos = barWidth * progress;
+    for (int i = 0; i < barWidth; ++i)
+        cout << (i < pos ? "█" : " ");
+    cout << "] " << int(progress * 100.0) << "%";
 }

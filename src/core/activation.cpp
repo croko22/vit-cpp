@@ -1,4 +1,6 @@
 #include "../../include/core/activation.h"
+#include "../../include/core/tensor.h"
+#include "../../include/core/random.h"
 #include <cmath>
 #include <algorithm>
 #include <vector>
@@ -129,5 +131,29 @@ Tensor Activation::softmax_grad(const Tensor &softmax_output, const Tensor &grad
         }
     }
 
+    return result;
+}
+
+Tensor Activation::dropout(const Tensor &input, float drop_prob, bool training)
+{
+    if (!training || drop_prob == 0.0f)
+    {
+        return input; // No hacer nada durante la inferencia o si la probabilidad es 0
+    }
+
+    Tensor result(input.get_shape());
+    float scale = 1.0f / (1.0f - drop_prob); // Inverted Dropout
+
+    for (int i = 0; i < input.get_size(); ++i)
+    {
+        if (Random::uniform(0.0f, 1.0f) > drop_prob)
+        {
+            result.data[i] = input.data[i] * scale;
+        }
+        else
+        {
+            result.data[i] = 0.0f;
+        }
+    }
     return result;
 }
