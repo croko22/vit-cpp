@@ -59,7 +59,7 @@ public:
             if (label >= num_classes_to_load)
                 continue;
 
-            Tensor image(28, 28);
+            Tensor image({28, 28});
 
             for (int i = 0; i < 784; i++)
             {
@@ -81,10 +81,10 @@ public:
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), Random::gen);
 
-        int total = all_images.size();
-        int val_size = static_cast<int>(total * val_split);
-        int test_size = static_cast<int>(total * test_split);
-        int train_size = total - val_size - test_size;
+        size_t total = all_images.size();
+        size_t val_size = static_cast<size_t>(total * val_split);
+        size_t test_size = static_cast<size_t>(total * test_split);
+        size_t train_size = total - val_size - test_size;
 
         for (int idx : indices)
         {
@@ -124,14 +124,25 @@ public:
 
 int infer(const std::string &model_path, const Tensor &image)
 {
+    // Verificar que la imagen sea 2D y de tamaño 28x28
+    auto shape = image.get_shape();
 
-    if (image.rows != 28 || image.cols != 28)
+    if (shape.size() != 2 || shape[0] != 28 || shape[1] != 28)
     {
-        std::cerr << "Error: La imagen de entrada debe ser de 28x28. Dimensiones recibidas: "
-                  << image.rows << "x" << image.cols << std::endl;
+        std::cerr << "Error: La imagen de entrada debe ser de 28x28. Dimensiones recibidas: ";
+        if (shape.size() >= 2)
+        {
+            std::cerr << shape[0] << "x" << shape[1];
+        }
+        else
+        {
+            std::cerr << "tensor de " << shape.size() << " dimensiones";
+        }
+        std::cerr << std::endl;
         return -1;
     }
 
+    // Resto de la función sin cambios...
     int image_size = 28;
     int patch_size = 4;
     int d_model = 64;
@@ -156,7 +167,6 @@ int infer(const std::string &model_path, const Tensor &image)
     }
 
     int predicted_class = vit.predict(image);
-
     return predicted_class;
 }
 
@@ -175,7 +185,7 @@ int main(int argc, char *argv[])
 
     string model_path = argv[1];
 
-    Tensor test_image(28, 28);
+    Tensor test_image({28, 28});
     int true_label = -1;
 
     if (argc == 3)
