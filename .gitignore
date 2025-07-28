@@ -40,7 +40,10 @@
 
 /build
 /data
-/models
+
+models/*
+!models/configs/
+!models/configs/*
 
 .vscode
 venv_marian

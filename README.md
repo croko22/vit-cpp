@@ -31,84 +31,101 @@ El **Vision Transformer (ViT)** divide una imagen en bloques fijos (por ejemplo,
 
 ## Cómo compilar y ejecutar
 
-Este proyecto utiliza un `Makefile` para gestionar la compilación de forma eficiente y un script de ayuda (`run.sh`) para simplificar la ejecución de tareas comunes.
+Este proyecto utiliza un `Makefile` para la compilación y un script `run.sh` para simplificar la ejecución.
 
 ### Requisitos
 
   * Un compilador de C++ compatible con C++17 (ej. `g++`).
   * La utilidad `make`.
+  * Python 3 para scripts auxiliares.
 
-### Método 1: Usando el script de ayuda (`run.sh`) (Recomendado)
+### Uso del script `run.sh`
 
-Este script proporciona una interfaz sencilla para las operaciones más comunes.
-
-**1. Dar permisos de ejecución al script:**
-
-Primero, asegúrate de que el script sea ejecutable. Este comando solo necesita ser ejecutado una vez.
+**1. Dar permisos de ejecución (solo una vez):**
 
 ```bash
 chmod +x run.sh
 ```
 
-**2. Comandos disponibles:**
+2. Comandos disponibles:
 
-* **Entrenar el modelo:**
-  Entrena un Vision Transformer con los datasets especificados.
+Entrenar el modelo:
+Usa un archivo de configuración para definir todos los hiperparámetros.
 
-  ```bash
-  ./run.sh train <archivo_entrenamiento.csv> <archivo_prueba.csv>
-  ```
+```bash
+./run.sh train <ruta_a_config.cfg>
+```
 
-  Ejemplo:
-  ```bash
-  ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv
-  ```
+Ejemplo:
 
-* **Hacer inferencia con imagen específica:**
-  Realiza predicción sobre una imagen específica usando un modelo entrenado.
+```bash
+./run.sh train models/configs/mnist_small.cfg
+```
 
-  ```bash
-  ./run.sh infer <modelo.bin> <imagen.csv>
-  ```
+Evaluar un modelo:
+Genera la matriz de confusión para un modelo entrenado.
 
-  Ejemplo:
-  ```bash
-  ./run.sh infer models/vit_20250715_161742.bin data/predict/sample_imagen.csv
-  ```
+```
+./run.sh evaluate <ruta_al_modelo.bin> <nombre_dataset>
+```
 
-* **Predicción automática:**
-  Extrae automáticamente una imagen aleatoria del dataset de prueba y realiza predicción.
+Ejemplo:
 
-  ```bash
-  ./run.sh predict
-  ```
+```bash
+./run.sh evaluate models/mnist/vit_...bin mnist
+```
 
-* **Limpiar el proyecto:**
-  Elimina la carpeta `build/` y todos los archivos compilados.
+Predecir con una imagen aleatoria:
+Extrae una imagen al azar de un dataset y usa el modelo más reciente.
 
-  ```bash
-  ./run.sh clean
-  ```
+```bash
+./run.sh predict [nombre_dataset]
+```
 
-   g++ examples/test_mha.cpp src/model/multihead_attention.cpp src/core/tensor.cpp src/model/linear.cpp src/core/activ
-ation.cpp src/core/random.cpp && ./a.out
+Ejemplo (usa mnist por defecto):
 
-# Compilar
-g++ -O2 benchmarks/bench_attention.cpp src/model/multihead_attention.cpp src/core/tensor.cpp src/core/activation.cpp src/model/linear.cpp src/core/random.cpp -Iinclude
+```bash
+./run.sh predict fashionmnist
+```
 
-# Ejecutar
-./a.out
+Hacer inferencia directa:
+Realiza una predicción sobre un archivo de imagen específico.
 
-## Resultados
+```bash
+./run.sh infer <modelo.bin> <imagen.csv>
+```
 
-## Entrenamiento MNIST SGD
+Limpiar el proyecto:
+Elimina los archivos de compilación.
+
+```bash
+./run.sh clean
+```
+
+# Etrenamiento
 ![train](docs/img/train1.png)
 
-### Prediccion mnist
+# Resultados
+## MNIST
+Configuración: Se utilizó la configuración definida en configs/mnist.cfg.
+
+Métricas Finales:
+<!-- | Métrica | Valor |
+| :--- | :--- |
+| Precisión (Accuracy) | Tu resultado aquí |
+| F1-Score (Macro) | Tu resultado aquí | -->
+
+Predicción:
 ![infer](docs/img/predict1.png)
 
-### Metricas
+Curva de Entrenamiento:
 ![infer](docs/img/metrics1.png)
 
-- ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv
-- ./run.sh train data/fashion_mnist/fashion-mnist_test.csv data/fashion_mnist/fashion-mnist_train.csv
+Matriz de Confusión:
+![infer](docs/img/cm1.png)
+
+## Fashion-MNIST
+Configuración: Se utilizó la configuración definida en configs/fashionmnist.cfg.
+
+## Blood-MNIST
+Configuración: Se utilizó la configuración definida en configs/bloodmnist.cfg.
