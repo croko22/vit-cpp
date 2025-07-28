@@ -23,6 +23,7 @@
 #include "../include/model/vit.h"
 #include "../include/core/optimizer.h"
 #include "../include/optimizer/adam.h"
+#include "../include/optimizer/adamw.h"
 
 using namespace std;
 
@@ -260,7 +261,8 @@ int main(int argc, char *argv[])
     float learning_rate = initial_learning_rate;
 
     auto params = vit.get_parameters();
-    std::unique_ptr<Optimizer> optimizer = std::make_unique<Adam>(params, initial_learning_rate);
+    // std::unique_ptr<Optimizer> optimizer = std::make_unique<Adam>(params, initial_learning_rate);
+    std::unique_ptr<Optimizer> optimizer = std::make_unique<AdamW>(params, initial_learning_rate, 0.9f, 0.999f, 1e-8f, 0.01f);
 
     auto time_now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(time_now);

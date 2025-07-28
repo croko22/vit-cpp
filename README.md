@@ -106,3 +106,6 @@ g++ -O2 benchmarks/bench_attention.cpp src/model/multihead_attention.cpp src/cor
 
 ### Prediccion mnist
 ![infer](docs/img/predict1.png)
+
+- ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv
+- 
