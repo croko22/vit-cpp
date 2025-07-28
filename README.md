@@ -107,5 +107,8 @@ g++ -O2 benchmarks/bench_attention.cpp src/model/multihead_attention.cpp src/cor
 ### Prediccion mnist
 ![infer](docs/img/predict1.png)
 
+### Metricas
+![infer](docs/img/metrics1.png)
+
 - ./run.sh train data/mnist/mnist_train.csv data/mnist/mnist_test.csv
-- 
+- ./run.sh train data/fashion_mnist/fashion-mnist_test.csv data/fashion_mnist/fashion-mnist_train.csv
