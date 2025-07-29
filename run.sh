@@ -31,6 +31,8 @@ shift
 
 case $COMMAND in
     "train")
+        mkdir -p logs/mnist
+        
         if [ $# -ne 1 ]; then
             echo "Error: train requiere 1 argumento"
             echo "Uso: ./run.sh train <ruta_a_config.cfg>"
