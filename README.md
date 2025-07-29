@@ -1,6 +1,11 @@
 <!-- omit from toc -->
 # Vision Transformer
 
+Kevin Joaquin Chambi Tapia
+Victor Alejandro Quicaño Miranda
+Eduardo German Ruiz Mamani
+Sebastian Agenor Zamalloa Molina
+
 Este proyecto implementa un modelo **Vision Transformer (ViT)** utilizando únicamente **CUDA y C++**. La implementación es educativa y busca comprender los fundamentos del paper ["An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale" (Dosovitskiy et al., 2020)](https://arxiv.org/pdf/2010.11929).
 
 A diferencia de las redes neuronales convolucionales tradicionales, este enfoque transforma una imagen en pequeños *patches* que son procesados como secuencias, permitiendo el uso de la arquitectura Transformer originalmente diseñada para tareas de procesamiento de lenguaje natural.
@@ -11,7 +16,7 @@ A diferencia de las redes neuronales convolucionales tradicionales, este enfoque
 - [¿Qué es Vision Transformer?](#qué-es-vision-transformer)
 - [Cómo compilar y ejecutar](#cómo-compilar-y-ejecutar)
 - [Explicación del código](#explicación-del-código)
-- [Etrenamiento](#etrenamiento)
+- [Entrenamiento](#etrenamiento)
 - [Predicción](#predicción)
 - [Resultados](#resultados)
   - [MNIST](#mnist)
@@ -180,7 +185,7 @@ Contiene activaciones como ReLU, GELU, y Softmax.
 
 Implementaciones manuales de `SGD`, `Adam`, y `AdamW` siguiendo fórmulas originales con soporte para `weight decay`.
 
-## Etrenamiento
+## Entrenamiento
 ![train](docs/img/train1.png)
 ...
 ![train](docs/img/train2.png)
