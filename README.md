@@ -2,8 +2,11 @@
 # Vision Transformer
 
 Kevin Joaquin Chambi Tapia
+
 Victor Alejandro Quicaño Miranda
+
 Eduardo German Ruiz Mamani
+
 Sebastian Agenor Zamalloa Molina
 
 Este proyecto implementa un modelo **Vision Transformer (ViT)** utilizando únicamente **CUDA y C++**. La implementación es educativa y busca comprender los fundamentos del paper ["An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale" (Dosovitskiy et al., 2020)](https://arxiv.org/pdf/2010.11929).
