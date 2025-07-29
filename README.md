@@ -1,13 +1,10 @@
 <!-- omit from toc -->
 # Vision Transformer
 
-Kevin Joaquin Chambi Tapia
-
-Victor Alejandro Quicaño Miranda
-
-Eduardo German Ruiz Mamani
-
-Sebastian Agenor Zamalloa Molina
+- Kevin Joaquin Chambi Tapia
+- Victor Alejandro Quicaño Miranda
+- Eduardo German Ruiz Mamani
+- Sebastian Agenor Zamalloa Molina
 
 Este proyecto implementa un modelo **Vision Transformer (ViT)** utilizando únicamente **CUDA y C++**. La implementación es educativa y busca comprender los fundamentos del paper ["An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale" (Dosovitskiy et al., 2020)](https://arxiv.org/pdf/2010.11929).
 
@@ -19,7 +16,7 @@ A diferencia de las redes neuronales convolucionales tradicionales, este enfoque
 - [¿Qué es Vision Transformer?](#qué-es-vision-transformer)
 - [Cómo compilar y ejecutar](#cómo-compilar-y-ejecutar)
 - [Explicación del código](#explicación-del-código)
-- [Entrenamiento](#etrenamiento)
+- [Entrenamiento](#entrenamiento)
 - [Predicción](#predicción)
 - [Resultados](#resultados)
   - [MNIST](#mnist)
@@ -218,8 +215,15 @@ Configuración: Se utilizó la configuración definida en configs/fashionmnist.c
 Métricas Finales:
 | Métrica              | Valor     |
 | :------------------- | :-------- |
-| Precisión (Accuracy) | 96.44%    |
-| F1-Score (Macro)     | 0.9638    |
+| Precisión (Accuracy) | 86.79%    |
+| F1-Score (Macro)     | 0.8678    |
+
+
+Curva de Entrenamiento:
+![infer](docs/img/fashion1.png)
+
+Matriz de Confusión:
+![infer](docs/img/fashion_cm.png)
 
 ### Blood-MNIST
 Configuración: Se utilizó la configuración definida en configs/bloodmnist.cfg.
@@ -227,11 +231,11 @@ Configuración: Se utilizó la configuración definida en configs/bloodmnist.cfg
 Métricas Finales:
 | Métrica              | Valor     |
 | :------------------- | :-------- |
-| Precisión (Accuracy) | 86.79%    |
-| F1-Score (Macro)     | 0.8678    |
+| Precisión (Accuracy) | 0.77%    |
+| F1-Score (Macro)     | 0.7513    |
 
 Curva de Entrenamiento:
-![infer](docs/img/fashion1.png)
+![infer](docs/img/bloodmnist1.png)
 
 Matriz de Confusión:
-![infer](docs/img/fashion_cm.png)
+![infer](docs/img/bloodmnist_cm.png)
