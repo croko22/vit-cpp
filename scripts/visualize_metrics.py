@@ -4,6 +4,7 @@ import seaborn as sns
 import numpy as np
 from pathlib import Path
 import glob
+import sys
 
 def visualizar_entrenamiento(csv_path):
     """
@@ -24,7 +25,7 @@ def visualizar_entrenamiento(csv_path):
     ax1 = plt.subplot(2, 3, 1)
     plt.plot(df['epoch'], df['train_loss'], 'b-', linewidth=2, label='Train Loss', marker='o', markersize=4)
     plt.plot(df['epoch'], df['val_loss'], 'r-', linewidth=2, label='Val Loss', marker='s', markersize=4)
-    plt.title('📉 Loss Evolution', fontsize=14, fontweight='bold')
+    plt.title('Loss Evolution', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
@@ -34,7 +35,7 @@ def visualizar_entrenamiento(csv_path):
     ax2 = plt.subplot(2, 3, 2)
     plt.plot(df['epoch'], df['train_accuracy']*100, 'g-', linewidth=2, label='Train Acc', marker='o', markersize=4)
     plt.plot(df['epoch'], df['val_accuracy']*100, 'orange', linewidth=2, label='Val Acc', marker='s', markersize=4)
-    plt.title('🎯 Accuracy Evolution', fontsize=14, fontweight='bold')
+    plt.title('Accuracy Evolution', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy (%)')
     plt.legend()
@@ -44,7 +45,7 @@ def visualizar_entrenamiento(csv_path):
     ax3 = plt.subplot(2, 3, 3)
     plt.plot(df['epoch'], df['train_f1_score']*100, 'purple', linewidth=2, label='Train F1', marker='o', markersize=4)
     plt.plot(df['epoch'], df['val_f1_score']*100, 'brown', linewidth=2, label='Val F1', marker='s', markersize=4)
-    plt.title('🏆 F1-Score Evolution', fontsize=14, fontweight='bold')
+    plt.title('F1-Score Evolution', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('F1-Score (%)')
     plt.legend()
@@ -60,7 +61,7 @@ def visualizar_entrenamiento(csv_path):
     ax4.set_xlabel('Epoch')
     ax4.set_ylabel('Learning Rate', color='cyan')
     ax4_twin.set_ylabel('Duration (seconds)', color='magenta')
-    ax4.set_title('⚙️ Training Dynamics', fontsize=14, fontweight='bold')
+    ax4.set_title('Training Dynamics', fontsize=14, fontweight='bold')
     
     # Combinar leyendas
     lines = line1 + line2
@@ -73,7 +74,7 @@ def visualizar_entrenamiento(csv_path):
     overfitting = df['train_accuracy'] - df['val_accuracy']
     plt.plot(df['epoch'], overfitting*100, 'red', linewidth=2, label='Train - Val Acc', marker='x', markersize=5)
     plt.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-    plt.title('🔍 Overfitting Analysis', fontsize=14, fontweight='bold')
+    plt.title('Overfitting Analysis', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy Gap (%)')
     plt.legend()
@@ -90,28 +91,28 @@ def visualizar_entrenamiento(csv_path):
     avg_duration = df['duration_sec'].mean()
     
     stats_text = f"""
-📊 ESTADÍSTICAS FINALES
+ESTADISTICAS FINALES
 {'='*25}
 
-🏁 Época Final: {int(final_epoch['epoch'])}
-📈 Train Acc: {final_epoch['train_accuracy']*100:.2f}%
-📊 Val Acc: {final_epoch['val_accuracy']*100:.2f}%
-🎯 F1-Score: {final_epoch['val_f1_score']*100:.2f}%
-📉 Final Loss: {final_epoch['val_loss']:.4f}
+Epoca Final: {int(final_epoch['epoch'])}
+Train Acc: {final_epoch['train_accuracy']*100:.2f}%
+Val Acc: {final_epoch['val_accuracy']*100:.2f}%
+F1-Score: {final_epoch['val_f1_score']*100:.2f}%
+Final Loss: {final_epoch['val_loss']:.4f}
 
-🏆 MEJORES RESULTADOS
+MEJORES RESULTADOS
 {'='*25}
 
-🥇 Mejor Val Acc: {best_val_acc*100:.2f}%
-📍 En época: {int(best_val_epoch)}
-⏱️ Tiempo promedio/época: {avg_duration:.1f}s
-⚡ Tiempo total: {df['duration_sec'].sum()/60:.1f} min
+Mejor Val Acc: {best_val_acc*100:.2f}%
+En epoca: {int(best_val_epoch)}
+Tiempo promedio/epoca: {avg_duration:.1f}s
+Tiempo total: {df['duration_sec'].sum()/60:.1f} min
 
-🔧 CONFIGURACIÓN
+CONFIGURACION
 {'='*25}
 
-📚 Learning Rate: {final_epoch['learning_rate']}
-🔄 Total Épocas: {len(df)}
+Learning Rate: {final_epoch['learning_rate']}
+Total Epocas: {len(df)}
     """
     
     ax6.text(0.05, 0.95, stats_text, transform=ax6.transAxes, fontsize=10,
@@ -123,21 +124,21 @@ def visualizar_entrenamiento(csv_path):
     # Guardar gráfico
     output_path = csv_path.replace('.csv', '_visualization.png')
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"✅ Gráfico guardado en: {output_path}")
+    print(f"Grafico guardado en: {output_path}")
     
     plt.show()
     
     return df
 
-def visualizar_comparacion_multiple(logs_dir="../logs/"):
+def visualizar_comparacion_multiple(dataset_dir):
     """
-    Compara múltiples experimentos si hay varios archivos CSV
+    Compara múltiples experimentos de un dataset específico
     """
     
-    csv_files = glob.glob(f"{logs_dir}/*.csv")
+    csv_files = glob.glob(f"{dataset_dir}/*.csv")
     
     if len(csv_files) <= 1:
-        print("Solo hay un archivo CSV, no se puede hacer comparación")
+        print("Solo hay un archivo CSV, no se puede hacer comparacion")
         return
     
     plt.figure(figsize=(15, 10))
@@ -151,9 +152,9 @@ def visualizar_comparacion_multiple(logs_dir="../logs/"):
         filename = Path(csv_file).stem
         plt.plot(df['epoch'], df['val_accuracy']*100, 
                 color=colors[i % len(colors)], linewidth=2, 
-                label=filename, marker='o', markersize=3)
+                label=filename[-8:], marker='o', markersize=3)
     
-    plt.title('🏆 Comparación Accuracy Validación', fontsize=14, fontweight='bold')
+    plt.title('Comparacion Accuracy Validacion', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Validation Accuracy (%)')
     plt.legend()
@@ -166,9 +167,9 @@ def visualizar_comparacion_multiple(logs_dir="../logs/"):
         filename = Path(csv_file).stem
         plt.plot(df['epoch'], df['val_loss'], 
                 color=colors[i % len(colors)], linewidth=2, 
-                label=filename, marker='s', markersize=3)
+                label=filename[-8:], marker='s', markersize=3)
     
-    plt.title('📉 Comparación Loss Validación', fontsize=14, fontweight='bold')
+    plt.title('Comparacion Loss Validacion', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Validation Loss')
     plt.legend()
@@ -181,9 +182,9 @@ def visualizar_comparacion_multiple(logs_dir="../logs/"):
         filename = Path(csv_file).stem
         plt.plot(df['epoch'], df['val_f1_score']*100, 
                 color=colors[i % len(colors)], linewidth=2, 
-                label=filename, marker='^', markersize=3)
+                label=filename[-8:], marker='^', markersize=3)
     
-    plt.title('🎯 Comparación F1-Score', fontsize=14, fontweight='bold')
+    plt.title('Comparacion F1-Score', fontsize=14, fontweight='bold')
     plt.xlabel('Epoch')
     plt.ylabel('Validation F1-Score (%)')
     plt.legend()
@@ -201,7 +202,7 @@ def visualizar_comparacion_multiple(logs_dir="../logs/"):
         avg_times.append(df['duration_sec'].mean())
     
     bars = plt.bar(exp_names, avg_times, color=colors[:len(exp_names)])
-    plt.title('⏱️ Tiempo Promedio por Época', fontsize=14, fontweight='bold')
+    plt.title('Tiempo Promedio por Epoca', fontsize=14, fontweight='bold')
     plt.xlabel('Experimento')
     plt.ylabel('Tiempo (segundos)')
     plt.xticks(rotation=45)
@@ -212,42 +213,57 @@ def visualizar_comparacion_multiple(logs_dir="../logs/"):
                 f'{time:.1f}s', ha='center', va='bottom')
     
     plt.tight_layout()
-    plt.savefig(f"{logs_dir}/comparison_visualization.png", dpi=300, bbox_inches='tight')
-    print(f"✅ Comparación guardada en: {logs_dir}/comparison_visualization.png")
+    plt.savefig(f"{dataset_dir}/comparison_visualization.png", dpi=300, bbox_inches='tight')
+    print(f"Comparacion guardada en: {dataset_dir}/comparison_visualization.png")
     plt.show()
 
 def main():
     """Función principal"""
-    print("🚀 Script de Visualización ViT Training")
-    print("="*40)
-    
-    # Buscar archivos CSV en logs
-    csv_files = glob.glob("../logs/*.csv")
-    
-    if not csv_files:
-        print("❌ No se encontraron archivos CSV en ./logs/")
+    if len(sys.argv) != 2:
+        print("Uso: python visualize_metrics.py <dataset_name>")
+        print("Ejemplo: python visualize_metrics.py mnist")
+        print("         python visualize_metrics.py fashionmnist")
+        print("         python visualize_metrics.py bloodmnist")
         return
     
-    print(f"📁 Archivos encontrados: {len(csv_files)}")
+    dataset_name = sys.argv[1]
+    logs_dir = f"../logs/{dataset_name}"
+    
+    print(f"Script de Visualizacion ViT Training - {dataset_name.upper()}")
+    print("="*50)
+    
+    # Verificar que el directorio existe
+    if not Path(logs_dir).exists():
+        print(f"Error: No existe el directorio {logs_dir}")
+        return
+    
+    # Buscar archivos CSV en el directorio del dataset
+    csv_files = glob.glob(f"{logs_dir}/*.csv")
+    
+    if not csv_files:
+        print(f"No se encontraron archivos CSV en {logs_dir}")
+        return
+    
+    print(f"Archivos encontrados: {len(csv_files)}")
     for i, file in enumerate(csv_files):
         print(f"  {i+1}. {Path(file).name}")
     
     # Visualizar el más reciente
     latest_file = max(csv_files, key=lambda x: Path(x).stat().st_mtime)
-    print(f"\n📊 Visualizando archivo más reciente: {Path(latest_file).name}")
+    print(f"\nVisualizando archivo mas reciente: {Path(latest_file).name}")
     
     try:
         df = visualizar_entrenamiento(latest_file)
         
         # Si hay múltiples archivos, hacer comparación
         if len(csv_files) > 1:
-            print("\n🔀 Generando comparación múltiple...")
-            visualizar_comparacion_multiple("logs")
+            print(f"\nGenerando comparacion multiple para {dataset_name}...")
+            visualizar_comparacion_multiple(logs_dir)
         
-        print("\n✅ ¡Visualización completada!")
+        print("\nVisualizacion completada!")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
 
